@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "reading-club-coordinator",
+  "account_id": "b3945351f46c981a8a0c565b44a32736",
+  "compatibility_date": "2026-08-02",
+  "vars": {
+    "LARK_BASE_TOKEN": "DXHmbEF1OaquxtsGcEPcXGuSntb",
+    "LARK_MEMBER_TABLE_ID": "tbldukNupNFJacJg",
+    "LARK_SELECTION_TABLE_ID": "tblEnAS3liSmWAMG"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "reading-club-coordinator-db",
+      "database_id": "2cab48ad-8982-4f10-9ce1-de871fbee16e",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

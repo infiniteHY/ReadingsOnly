@@ -13,12 +13,15 @@ test("coordinator page contains the complete primary workflow", async () => {
 });
 
 test("Cloudflare build, D1 migration, and social asset are present", async () => {
-  const [hosting, migration, route] = await Promise.all([
+  const [hosting, wrangler, migration, route] = await Promise.all([
     readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
+    readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0000_fixed_betty_ross.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/api/grouping/route.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(hosting, /"d1": "DB"/);
+  assert.match(hosting, /"project_id"/);
+  assert.match(wrangler, /"binding": "DB"/);
+  assert.match(wrangler, /"database_name": "reading-club-coordinator-db"/);
   assert.match(migration, /CREATE TABLE `groups`/);
   assert.match(migration, /CREATE TABLE `group_members`/);
   assert.match(route, /historyRows/);
