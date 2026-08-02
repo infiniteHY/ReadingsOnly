@@ -62,10 +62,50 @@ export async function saveRound(input: {
 }
 
 export async function getRoundHistory() {
-  const rounds = await database().prepare(`
+  const db = database();
+  const rounds = await db.prepare(`
     SELECT id, active_count, submitted_count, missing_count, group_count, applied_at
     FROM rounds ORDER BY applied_at DESC LIMIT 12
   `).all<{ id: string; active_count: number; submitted_count: number; missing_count: number; group_count: number; applied_at: string }>();
+  const roundIds = rounds.results.map((row) => row.id);
+  if (!roundIds.length) return [];
+  const placeholders = roundIds.map(() => "?").join(", ");
+  const details = await db.prepare(`
+    SELECT g.id AS group_id, g.round, g.book, g.group_no, g.status,
+      gm.member_key, gm.member_name
+    FROM groups g
+    LEFT JOIN group_members gm ON gm.group_id = g.id
+    WHERE g.round IN (${placeholders})
+    ORDER BY g.round DESC, g.book ASC,
+      CASE WHEN g.group_no = '待协调' THEN 999999 ELSE CAST(g.group_no AS INTEGER) END ASC,
+      gm.member_name ASC
+  `).bind(...roundIds).all<{
+    group_id: string;
+    round: string;
+    book: string;
+    group_no: string;
+    status: string;
+    member_key: string | null;
+    member_name: string | null;
+  }>();
+  const detailsByRound = new Map<string, Map<string, {
+    book: string;
+    group: string;
+    status: string;
+    members: { key: string; name: string }[];
+  }>>();
+  for (const row of details.results) {
+    const roundGroups = detailsByRound.get(row.round) ?? new Map();
+    const group = roundGroups.get(row.group_id) ?? {
+      book: row.book,
+      group: row.group_no,
+      status: row.status,
+      members: [],
+    };
+    if (row.member_key && row.member_name) group.members.push({ key: row.member_key, name: row.member_name });
+    roundGroups.set(row.group_id, group);
+    detailsByRound.set(row.round, roundGroups);
+  }
   return rounds.results.map((row: { id: string; active_count: number; submitted_count: number; missing_count: number; group_count: number; applied_at: string }) => ({
     round: row.id,
     active: row.active_count,
@@ -73,5 +113,6 @@ export async function getRoundHistory() {
     missing: row.missing_count,
     groups: row.group_count,
     appliedAt: row.applied_at,
+    groupDetails: [...(detailsByRound.get(row.id)?.values() ?? [])],
   }));
 }

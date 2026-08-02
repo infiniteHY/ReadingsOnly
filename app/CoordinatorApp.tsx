@@ -17,7 +17,16 @@ type Result = {
   groups: Group[];
   history?: HistoryItem[];
 };
-type HistoryItem = { round: string; active: number; submitted: number; missing: number; groups: number; appliedAt: string };
+type HistoryGroup = { book: string; group: string; status: string; members: { key: string; name: string }[] };
+type HistoryItem = {
+  round: string;
+  active: number;
+  submitted: number;
+  missing: number;
+  groups: number;
+  appliedAt: string;
+  groupDetails?: HistoryGroup[];
+};
 type RoundTableResource = {
   tableId: string;
   tableName: string;
@@ -77,6 +86,7 @@ export function CoordinatorApp() {
   const [error, setError] = useState("");
   const [confirmApply, setConfirmApply] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [expandedHistoryRound, setExpandedHistoryRound] = useState<string | null>(null);
   const [roundResources, setRoundResources] = useState<RoundResources | null>(null);
   const [roundTablesLoading, setRoundTablesLoading] = useState(false);
   const [roundTablesError, setRoundTablesError] = useState("");
@@ -162,7 +172,10 @@ export function CoordinatorApp() {
       const payload = await response.json() as { ok: boolean; error?: string; data: Result };
       if (!response.ok || !payload.ok) throw new Error(payload.error || "运行失败");
       setResult(payload.data);
-      if (payload.data.history) setHistory(payload.data.history);
+      if (payload.data.history) {
+        setHistory(payload.data.history);
+        setExpandedHistoryRound(payload.data.round);
+      }
       setBackendReady(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法连接统导后端");
@@ -181,6 +194,15 @@ export function CoordinatorApp() {
     }
     return [...books.entries()];
   }, [result]);
+
+  const expandedHistory = history.find((item) => item.round === expandedHistoryRound) ?? null;
+  const expandedHistoryBooks = useMemo(() => {
+    const books = new Map<string, HistoryGroup[]>();
+    for (const group of expandedHistory?.groupDetails ?? []) {
+      books.set(group.book, [...(books.get(group.book) ?? []), group]);
+    }
+    return [...books.entries()];
+  }, [expandedHistory]);
 
   function downloadCsv() {
     if (!result) return;
@@ -328,13 +350,40 @@ export function CoordinatorApp() {
           <div className="groups-heading"><h3>数据库历史</h3><p>后续分组会自动避开这些历史搭档</p></div>
           <div className="history-list">
             {history.map((item) => (
-              <article key={item.round}>
-                <strong>{item.round}</strong>
-                <span>{item.submitted} 人 · {item.groups} 组</span>
-                <small>{new Date(item.appliedAt).toLocaleDateString("zh-CN")}</small>
+              <article className={expandedHistoryRound === item.round ? "expanded" : ""} key={item.round}>
+                <button
+                  type="button"
+                  aria-expanded={expandedHistoryRound === item.round}
+                  onClick={() => setExpandedHistoryRound((current) => current === item.round ? null : item.round)}
+                >
+                  <strong>{item.round}</strong>
+                  <span>{item.submitted} 人 · {item.groups} 组</span>
+                  <small>{new Date(item.appliedAt).toLocaleDateString("zh-CN")} · {expandedHistoryRound === item.round ? "收起明细 ↑" : "查看分组 ↓"}</small>
+                </button>
               </article>
             ))}
           </div>
+          {expandedHistory && (
+            <div className="history-detail" aria-label={`${expandedHistory.round} 历史分组明细`}>
+              <div className="history-detail-heading">
+                <strong>{expandedHistory.round} 分组明细</strong>
+                <span>{expandedHistory.groups} 组 · 后续贪心分组已纳入这些搭档关系</span>
+              </div>
+              {expandedHistoryBooks.length ? expandedHistoryBooks.map(([book, groups]) => (
+                <section key={book}>
+                  <h4>{book}</h4>
+                  <div>
+                    {groups.map((group) => (
+                      <p key={`${book}-${group.group}`}>
+                        <b>{group.group === "待协调" ? "待协调" : `第 ${group.group} 组`}</b>
+                        <span>{group.members.map((member) => member.name).join("、") || "暂无成员"}</span>
+                      </p>
+                    ))}
+                  </div>
+                </section>
+              )) : <p className="all-clear">该期只有汇总记录，暂无可展示的分组成员明细。</p>}
+            </div>
+          )}
         </section>
       )}
 

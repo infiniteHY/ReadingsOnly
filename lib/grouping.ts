@@ -123,12 +123,9 @@ export function historyFromRows(rows: { round: string; groupId: string; memberKe
 
 function targetSizes(total: number): number[] {
   if (total <= 0) return [];
-  if (total <= 3) return [total];
-  const threes = Math.floor(total / 3);
-  const remainder = total % 3;
-  if (remainder === 0) return Array(threes).fill(3);
-  if (remainder === 1) return [...Array(Math.max(0, threes - 1)).fill(3), 2, 2];
-  return [...Array(threes).fill(3), 2];
+  if (total === 1) return [1];
+  if (total % 2 === 0) return Array(total / 2).fill(2);
+  return [...Array((total - 3) / 2).fill(2), 3];
 }
 
 type Participant = { key: string; name: string; recordId: string; choiceIndex: number };
