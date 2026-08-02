@@ -5,8 +5,7 @@
   "compatibility_date": "2026-08-02",
   "vars": {
     "LARK_BASE_TOKEN": "DXHmbEF1OaquxtsGcEPcXGuSntb",
-    "LARK_MEMBER_TABLE_ID": "tbldukNupNFJacJg",
-    "LARK_SELECTION_TABLE_ID": "tblEnAS3liSmWAMG"
+    "LARK_MEMBER_TABLE_ID": "tbldukNupNFJacJg"
   },
   "d1_databases": [
     {

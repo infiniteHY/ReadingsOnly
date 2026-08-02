@@ -9,7 +9,24 @@ test("coordinator page contains the complete primary workflow", async () => {
   assert.match(client, /确认并写回飞书/);
   assert.match(client, /数据库历史/);
   assert.match(client, /下载 CSV/);
+  assert.match(client, /按期次归档/);
+  assert.match(client, /推书汇总/);
+  assert.match(client, /初始化.*本期/);
   assert.doesNotMatch(client, /codex-preview|Building your site|react-loading-skeleton/);
+});
+
+test("round-specific Feishu tables replace the fixed selection table", async () => {
+  const [feishu, route] = await Promise.all([
+    readFile(new URL("../lib/feishu.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/round-tables/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(feishu, /选书汇总｜/);
+  assert.match(feishu, /推书汇总｜/);
+  assert.match(feishu, /ensureRoundResources/);
+  assert.match(feishu, /"期次": round/);
+  assert.doesNotMatch(feishu, /LARK_SELECTION_TABLE_ID/);
+  assert.match(route, /isAdminRequest/);
+  assert.match(route, /ensureRoundResources/);
 });
 
 test("Cloudflare build, D1 migration, and social asset are present", async () => {

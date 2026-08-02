@@ -8,6 +8,7 @@ const BASE_URL = "https://hcnqf97op6m3.feishu.cn/base/DXHmbEF1OaquxtsGcEPcXGuSnt
 type Group = { book: string; group: string; members: string[] };
 type Result = {
   round: string;
+  selectionTableId: string;
   applied: boolean;
   historyRound: string | null;
   stats: { active: number; submitted: number; missing: number; groups: number; pending: number; invalid: number };
@@ -17,6 +18,18 @@ type Result = {
   history?: HistoryItem[];
 };
 type HistoryItem = { round: string; active: number; submitted: number; missing: number; groups: number; appliedAt: string };
+type RoundTableResource = {
+  tableId: string;
+  tableName: string;
+  formId: string | null;
+  formName: string | null;
+  recordCount: number;
+};
+type RoundResources = {
+  round: string;
+  selection: RoundTableResource | null;
+  recommendation: RoundTableResource | null;
+};
 
 function defaultRound() {
   const parts = new Intl.DateTimeFormat("zh-CN", {
@@ -33,6 +46,29 @@ function Initials({ name }: { name: string }) {
   return <span className="avatar" aria-hidden="true">{name.trim().slice(0, 1) || "?"}</span>;
 }
 
+function RoundTableCard({ title, copy, resource }: { title: string; copy: string; resource: RoundTableResource | null }) {
+  const tableUrl = resource ? `${BASE_URL}?table=${resource.tableId}` : "";
+  const formUrl = resource?.formId ? `${BASE_URL}?table=${resource.tableId}&view=${resource.formId}` : "";
+  return (
+    <article className={`round-table-card ${resource ? "ready" : "missing"}`}>
+      <div className="round-table-title">
+        <span>{resource ? "已就绪" : "待创建"}</span>
+        <strong>{title}</strong>
+      </div>
+      <p>{copy}</p>
+      {resource ? (
+        <div className="round-table-meta">
+          <b>{resource.recordCount}</b><span>条提交</span>
+          <div>
+            <a href={tableUrl} target="_blank" rel="noreferrer">打开汇总表 ↗</a>
+            {formUrl && <a href={formUrl} target="_blank" rel="noreferrer">打开表单 ↗</a>}
+          </div>
+        </div>
+      ) : <small>初始化后会在飞书 Base 中生成独立数据表和专属表单。</small>}
+    </article>
+  );
+}
+
 export function CoordinatorApp() {
   const [round, setRound] = useState(defaultRound);
   const [result, setResult] = useState<Result | null>(null);
@@ -41,6 +77,11 @@ export function CoordinatorApp() {
   const [error, setError] = useState("");
   const [confirmApply, setConfirmApply] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [roundResources, setRoundResources] = useState<RoundResources | null>(null);
+  const [roundTablesLoading, setRoundTablesLoading] = useState(false);
+  const [roundTablesError, setRoundTablesError] = useState("");
+  const [initializingRound, setInitializingRound] = useState(false);
+  const currentRoundResources = roundResources?.round === round.trim() ? roundResources : null;
 
   useEffect(() => {
     fetch(`${API_URL}/api/health`)
@@ -56,9 +97,55 @@ export function CoordinatorApp() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(round.trim())) {
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setRoundTablesLoading(true);
+      setRoundTablesError("");
+      try {
+        const response = await fetch(`${API_URL}/api/round-tables?round=${encodeURIComponent(round.trim())}`, { signal: controller.signal });
+        const payload = await response.json() as { ok: boolean; error?: string; data: RoundResources };
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "读取期次表失败");
+        setRoundResources(payload.data);
+      } catch (caught) {
+        if (!controller.signal.aborted) setRoundTablesError(caught instanceof Error ? caught.message : "读取期次表失败");
+      } finally {
+        if (!controller.signal.aborted) setRoundTablesLoading(false);
+      }
+    }, 300);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [round]);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.replace("/login");
+  }
+
+  async function initializeRoundTables() {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(round.trim())) return setRoundTablesError("期次格式应为 YYYY-MM，例如 2026-08");
+    setInitializingRound(true);
+    setRoundTablesError("");
+    try {
+      const response = await fetch(`${API_URL}/api/round-tables`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ round: round.trim() }),
+      });
+      const payload = await response.json() as { ok: boolean; error?: string; data: RoundResources };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "初始化期次表失败");
+      setRoundResources(payload.data);
+      setBackendReady(true);
+    } catch (caught) {
+      setRoundTablesError(caught instanceof Error ? caught.message : "初始化期次表失败");
+    } finally {
+      setInitializingRound(false);
+    }
   }
 
   async function run(apply: boolean) {
@@ -133,6 +220,25 @@ export function CoordinatorApp() {
         <p>读取飞书名单，自动找出漏选成员，并优先匹配还没有一起讨论过的人。</p>
       </section>
 
+      <section className="round-tables-panel" aria-label="期次收集表">
+        <div className="round-tables-heading">
+          <div><span>按期次归档</span><h2>{round || "本期"} 收集中心</h2></div>
+          <p>每一期分别创建推书汇总、荐书表单、选书汇总和选书表单。</p>
+        </div>
+        <div className="round-table-grid">
+          <RoundTableCard title="推书汇总" copy="社员按本期荐书，书导在该表勾选最终入选书目。" resource={currentRoundResources?.recommendation ?? null} />
+          <RoundTableCard title="选书汇总" copy="社员从本期书单选择 1—3 本书，统导在该表完成分组。" resource={currentRoundResources?.selection ?? null} />
+        </div>
+        <div className="round-tables-actions">
+          <span>{roundTablesLoading ? "正在检查飞书期次表…" : roundTablesError || (currentRoundResources?.selection && currentRoundResources?.recommendation ? "本期期次表与表单均已就绪。" : "缺少的期次表可以一键补齐，现有数据不会被覆盖。")}</span>
+          {(!currentRoundResources?.selection || !currentRoundResources?.recommendation) && (
+            <button className="button primary" onClick={initializeRoundTables} disabled={initializingRound || roundTablesLoading}>
+              {initializingRound ? "正在创建…" : `初始化 ${round || "本期"}`}
+            </button>
+          )}
+        </div>
+      </section>
+
       <section className="run-panel" aria-label="运行分组">
         <label htmlFor="round">本期期次</label>
         <div className="run-row">
@@ -143,15 +249,15 @@ export function CoordinatorApp() {
             placeholder="例如 2026-08"
             disabled={loading}
           />
-          <button className="button secondary" onClick={() => run(false)} disabled={loading}>
+          <button className="button secondary" onClick={() => run(false)} disabled={loading || roundTablesLoading || currentRoundResources?.selection === null}>
             {loading ? "正在读取…" : "预览结果"}
           </button>
-          <button className="button primary" onClick={() => setConfirmApply(true)} disabled={loading || !result}>
+          <button className="button primary" onClick={() => setConfirmApply(true)} disabled={loading || !result || currentRoundResources?.selection === null}>
             确认并写回飞书
           </button>
         </div>
         <div className="run-note">
-          <span>先预览，再写回</span>
+          <span>分组只读取“选书汇总｜{round || "本期"}”</span>
           <a href={BASE_URL} target="_blank" rel="noreferrer">打开飞书原表 ↗</a>
         </div>
       </section>

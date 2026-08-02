@@ -6,7 +6,7 @@ import { CoordinatorApp } from "./CoordinatorApp";
 
 export const metadata: Metadata = {
   title: "统导工作台",
-  description: "读取飞书选书名单，统计漏选并生成讨论分组。",
+  description: "按期次管理飞书推书与选书问卷，并生成讨论分组。",
 };
 
 export default async function Home() {

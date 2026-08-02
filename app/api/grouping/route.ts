@@ -8,8 +8,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as { round?: string; apply?: boolean };
     const round = body.round?.trim() ?? "";
-    if (!round || round.length > 40) return Response.json({ ok: false, error: "请输入有效期次" }, { status: 400 });
-    const [{ members, selections }, storedHistory] = await Promise.all([loadFeishuData(), historyRows(round)]);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(round)) return Response.json({ ok: false, error: "期次格式应为 YYYY-MM，例如 2026-08" }, { status: 400 });
+    const [{ members, selections, selectionTableId }, storedHistory] = await Promise.all([loadFeishuData(round), historyRows(round)]);
     const validation = validateSelections(members, selections, round);
     const history = historyFromRows(storedHistory);
     const grouping = makeGrouping(validation.effective, history, round);
@@ -24,19 +24,20 @@ export async function POST(request: Request) {
       invalid: invalid.length,
     };
     if (body.apply === true) {
-      await updateSelectionRecords(patches);
+      await updateSelectionRecords(selectionTableId, patches);
       await saveRound({ round, stats, effective: validation.effective, groups: grouping.exportRows });
     }
     return Response.json({
       ok: true,
       data: {
         round,
+        selectionTableId,
         applied: body.apply === true,
         historyRound: history.lastRound || null,
         stats,
         missing: validation.missing.map((member) => member.name),
         invalid,
-        groups: grouping.exportRows.map(({ memberKeys: _memberKeys, ...group }) => group),
+        groups: grouping.exportRows.map((group) => ({ book: group.book, group: group.group, members: group.members })),
         history: body.apply === true ? await getRoundHistory() : undefined,
       },
     });
