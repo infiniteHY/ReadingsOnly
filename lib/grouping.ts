@@ -48,12 +48,12 @@ export type Evaluation = {
 };
 
 export function validateSelections(memberRows: RecordRow[], selectionRows: RecordRow[], round: string) {
-  const directory = new Map<string, { key: string; name: string; code: string }[]>();
+  const directory = new Map<string, { key: string; name: string }[]>();
   for (const row of memberRows) {
     if (!boolValue(row["是否在籍"])) continue;
     const key = normalized(row["姓名/昵称"]);
     if (!key) continue;
-    const member = { key, name: textValue(row["姓名/昵称"]), code: textValue(row["校验码"]) };
+    const member = { key, name: textValue(row["姓名/昵称"]) };
     directory.set(key, [...(directory.get(key) ?? []), member]);
   }
   const evaluations: Evaluation[] = selectionRows
@@ -68,7 +68,6 @@ export function validateSelections(memberRows: RecordRow[], selectionRows: Recor
       if (!key) error = "缺少姓名";
       else if (members.length === 0) error = "姓名不在社员名单";
       else if (members.length > 1) error = "社员名单姓名重复";
-      else if (textValue(row["校验码"]) !== members[0].code) error = "校验码错误";
       else if (selected.length === 0) error = "未选择书籍";
       else if (new Set(selected.map(normalized)).size !== selected.length) error = "选书重复";
       return {

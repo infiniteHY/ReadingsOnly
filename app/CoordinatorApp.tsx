@@ -319,7 +319,7 @@ export function CoordinatorApp() {
               <div className="card-title"><h3>提交检查</h3><span>{result.stats.invalid}</span></div>
               {result.invalid.length ? (
                 <div className="invalid-list">{result.invalid.map((item, index) => <p key={`${item.name}-${index}`}><b>{item.name}</b><span>{item.reason}</span></p>)}</div>
-              ) : <p className="all-clear">没有发现姓名、校验码或重复选书问题。</p>}
+              ) : <p className="all-clear">没有发现姓名或重复选书问题。</p>}
             </article>
           </div>
 

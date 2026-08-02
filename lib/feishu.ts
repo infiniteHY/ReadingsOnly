@@ -32,7 +32,6 @@ const RECOMMENDATION_PREFIX = "推书汇总｜";
 
 const selectionRequiredFields = [
   "姓名/昵称",
-  "校验码",
   ...SELECTION_CHOICE_FIELDS,
   SELECTION_STATUS_FIELD,
   ...SELECTION_GROUP_FIELDS,

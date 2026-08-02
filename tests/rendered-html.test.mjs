@@ -50,6 +50,7 @@ test("round-specific Feishu tables replace the fixed selection table", async () 
   assert.match(feishu, /syncRoundResources/);
   assert.match(feishu, /请先在飞书中人工创建/);
   assert.match(feishu, /请人工补齐后重新同步/);
+  assert.doesNotMatch(feishu, /校验码/);
   assert.doesNotMatch(feishu, /createTable|createField|ensureFields|createFormQuestions|configureForm|method: "DELETE"|question_ids/);
   assert.match(feishu, /"期次": round/);
   assert.doesNotMatch(feishu, /LARK_SELECTION_TABLE_ID/);
@@ -58,6 +59,7 @@ test("round-specific Feishu tables replace the fixed selection table", async () 
   assert.match(schema, /选书3组号/);
   assert.doesNotMatch(schema, /选书[456]/);
   assert.match(grouping, /SELECTION_GROUP_FIELDS/);
+  assert.doesNotMatch(grouping, /校验码/);
   assert.match(route, /isAdminRequest/);
   assert.match(route, /syncRoundResources/);
 });
