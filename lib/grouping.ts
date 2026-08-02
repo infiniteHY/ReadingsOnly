@@ -132,42 +132,89 @@ function targetSizes(total: number): number[] {
   return [...Array(threes).fill(3), 2];
 }
 
-function seededRandom(seed: string) {
-  let state = 2166136261;
-  for (const char of seed) state = Math.imul(state ^ char.charCodeAt(0), 16777619) >>> 0;
-  return () => {
-    state += 0x6d2b79f5;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
+type Participant = { key: string; name: string; recordId: string; choiceIndex: number };
+
+function stableRank(seed: string, key: string) {
+  let hash = 2166136261;
+  for (const char of `${seed}\u0000${key}`) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+  return hash;
 }
 
-type Participant = { key: string; name: string; recordId: string; choiceIndex: number };
+function compareNumbers(left: number[], right: number[]) {
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return 0;
+}
+
+function participantOrder(left: Participant, right: Participant, seed: string) {
+  return stableRank(seed, left.key) - stableRank(seed, right.key)
+    || left.key.localeCompare(right.key, "zh-CN");
+}
+
+function remainingConstraint(participant: Participant, remaining: Participant[], history: History) {
+  let unseenPartners = 0;
+  let recentPartners = 0;
+  let totalRepeats = 0;
+  for (const other of remaining) {
+    if (other === participant) continue;
+    const key = pairKey(participant.key, other.key);
+    const count = history.counts.get(key) ?? 0;
+    if (count === 0) unseenPartners += 1;
+    if (history.lastPairs.has(key)) recentPartners += 1;
+    totalRepeats += count;
+  }
+  return [unseenPartners, -recentPartners, -totalRepeats];
+}
+
+function candidateCost(group: Participant[], candidate: Participant, history: History) {
+  let discussedPartners = 0;
+  let recentPartners = 0;
+  let totalRepeats = 0;
+  for (const member of group) {
+    const key = pairKey(member.key, candidate.key);
+    const count = history.counts.get(key) ?? 0;
+    if (count > 0) discussedPartners += 1;
+    if (history.lastPairs.has(key)) recentPartners += 1;
+    totalRepeats += count;
+  }
+  return [discussedPartners, recentPartners, totalRepeats];
+}
+
 function arrange(participants: Participant[], history: History, seed: string) {
   if (participants.length <= 1) return [participants];
-  const random = seededRandom(seed);
   const sizes = targetSizes(participants.length);
-  let best: Participant[][] | null = null;
-  let bestScore = Infinity;
-  for (let attempt = 0; attempt < 1200; attempt += 1) {
-    const order = [...participants];
-    for (let index = order.length - 1; index > 0; index -= 1) {
-      const swap = Math.floor(random() * (index + 1));
-      [order[index], order[swap]] = [order[swap], order[index]];
+  const remaining = [...participants];
+  const groups: Participant[][] = [];
+
+  for (const size of sizes) {
+    remaining.sort((left, right) => (
+      compareNumbers(
+        remainingConstraint(left, remaining, history),
+        remainingConstraint(right, remaining, history),
+      ) || participantOrder(left, right, seed)
+    ));
+    const anchor = remaining.shift();
+    if (!anchor) break;
+    const group = [anchor];
+
+    while (group.length < size) {
+      remaining.sort((left, right) => (
+        compareNumbers(candidateCost(group, left, history), candidateCost(group, right, history))
+        || compareNumbers(
+          remainingConstraint(left, remaining, history),
+          remainingConstraint(right, remaining, history),
+        )
+        || participantOrder(left, right, seed)
+      ));
+      const candidate = remaining.shift();
+      if (!candidate) break;
+      group.push(candidate);
     }
-    let cursor = 0;
-    const groups = sizes.map((size) => { const group = order.slice(cursor, cursor + size); cursor += size; return group; });
-    let score = 0;
-    for (const group of groups) for (let i = 0; i < group.length; i += 1) for (let j = i + 1; j < group.length; j += 1) {
-      const key = pairKey(group[i].key, group[j].key);
-      score += (history.counts.get(key) ?? 0) * 100 + (history.lastPairs.has(key) ? 1000 : 0);
-    }
-    if (score < bestScore) { best = groups; bestScore = score; }
-    if (score === 0) break;
+    groups.push(group);
   }
-  return best ?? [participants];
+
+  return groups;
 }
 
 export function makeGrouping(effective: Evaluation[], history: History, seed: string) {
