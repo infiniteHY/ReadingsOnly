@@ -26,7 +26,9 @@ test("round-specific Feishu tables replace the fixed selection table", async () 
   assert.match(feishu, /推书汇总｜/);
   assert.match(feishu, /ensureRoundResources/);
   assert.match(feishu, /await ensureFields\(table\.id, adminFields, fields\)/);
-  assert.doesNotMatch(feishu, /method: "DELETE"/);
+  assert.match(feishu, /createFormQuestions/);
+  assert.match(feishu, /stillMissing/);
+  assert.doesNotMatch(feishu, /question_ids|隐藏表单内部管理字段/);
   assert.match(feishu, /"期次": round/);
   assert.doesNotMatch(feishu, /LARK_SELECTION_TABLE_ID/);
   assert.match(schema, /选书1组号/);

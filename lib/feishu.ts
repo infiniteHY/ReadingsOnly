@@ -13,6 +13,7 @@ type TableItem = { id: string; name: string };
 type FormItem = { id: string; name: string; description?: string };
 type FieldItem = { id: string; name: string; type: string };
 type FieldDefinition = Record<string, unknown> & { name: string; type: string };
+type QuestionDefinition = { name: string; description: string; required: boolean; option_display_mode?: number };
 
 export type RoundTableResource = {
   tableId: string;
@@ -231,6 +232,13 @@ async function createField(tableId: string, field: FieldDefinition) {
   return { id, name: field.name, type: field.type };
 }
 
+async function deleteField(tableId: string, fieldId: string, fieldName: string) {
+  const values = config();
+  await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/fields/${fieldId}`, {
+    method: "DELETE",
+  }, { operation: `清理未挂载到表单的空字段“${fieldName}”`, retryNotFound: true });
+}
+
 async function ensureFields(tableId: string, definitions: FieldDefinition[], fields: FieldItem[]) {
   for (const definition of definitions) {
     const existing = fields.find((field) => field.name === definition.name);
@@ -256,15 +264,69 @@ async function createForm(tableId: string, name: string, description: string) {
   return { id, name, description };
 }
 
+function formQuestionDefinitions(inputFields: FieldDefinition[], desired: QuestionDefinition[]) {
+  return desired.map((question) => {
+    const field = inputFields.find((item) => item.name === question.name);
+    if (!field) throw new Error(`缺少表单题目“${question.name}”的字段定义`);
+    const { name, ...properties } = field;
+    return {
+      ...properties,
+      title: name,
+      description: question.description,
+      required: question.required,
+      ...(question.option_display_mode === undefined ? {} : { option_display_mode: question.option_display_mode }),
+    };
+  });
+}
+
+async function createFormQuestions(
+  tableId: string,
+  formId: string,
+  inputFields: FieldDefinition[],
+  desired: QuestionDefinition[],
+) {
+  if (!desired.length) return;
+  const values = config();
+  await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms/${formId}/questions`, {
+    method: "POST",
+    body: JSON.stringify({ questions: formQuestionDefinitions(inputFields, desired) }),
+  }, { operation: "创建完整表单题目", retryNotFound: true });
+}
+
+async function tableHasRecords(tableId: string) {
+  const values = config();
+  const data = await request(`/open-apis/bitable/v1/apps/${values.LARK_BASE_TOKEN}/tables/${tableId}/records?page_size=1`);
+  return ((data.items ?? []) as unknown[]).length > 0;
+}
+
 async function configureForm(
   tableId: string,
   form: FormItem,
-  desired: { name: string; description: string; required: boolean; option_display_mode?: number }[],
+  inputFields: FieldDefinition[],
+  desired: QuestionDefinition[],
   waitUntilReady = false,
 ) {
   const values = config();
-  const questions = await listFormQuestions(tableId, form.id, waitUntilReady);
-  const byName = new Map(questions.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
+  let questions = await listFormQuestions(tableId, form.id, waitUntilReady);
+  let byName = new Map(questions.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
+  const missing = desired.filter((question) => !byName.has(question.name));
+  if (missing.length) {
+    if (await tableHasRecords(tableId)) {
+      throw new Error(`飞书表单“${form.name}”缺少题目：${missing.map((item) => item.name).join("、")}；表内已有提交，为避免数据损失已停止自动修复`);
+    }
+    const fields = await listFields(tableId, true);
+    for (const question of missing) {
+      const detachedField = fields.find((field) => field.name === question.name);
+      if (detachedField) await deleteField(tableId, detachedField.id, detachedField.name);
+    }
+    await createFormQuestions(tableId, form.id, inputFields, missing);
+    questions = await listFormQuestions(tableId, form.id, true);
+    byName = new Map(questions.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
+  }
+  const stillMissing = desired.filter((question) => !byName.has(question.name));
+  if (stillMissing.length) {
+    throw new Error(`飞书表单“${form.name}”创建不完整，仍缺少：${stillMissing.map((item) => item.name).join("、")}`);
+  }
   const updates = desired.map((question) => ({
     id: byName.get(question.name),
     title: question.name,
@@ -292,8 +354,8 @@ async function ensureResource(kind: "selection" | "recommendation", round: strin
 
   const inputFields = kind === "selection" ? selectionInputFields : recommendationInputFields;
   const adminFields = kind === "selection" ? selectionAdminFields : recommendationAdminFields;
-  const fields = await listFields(table.id, tableWasCreated);
-  await ensureFields(table.id, inputFields, fields);
+  const desiredQuestions = kind === "selection" ? selectionQuestions : recommendationQuestions;
+  let fields = await listFields(table.id, tableWasCreated);
 
   const formName = `${round} ${kind === "selection" ? "选书" : "荐书"}表单`;
   const description = kind === "selection"
@@ -302,14 +364,23 @@ async function ensureResource(kind: "selection" | "recommendation", round: strin
   const forms = await listForms(table.id, tableWasCreated);
   const existingForm = forms.find((item) => item.name === formName);
   const form = existingForm ?? await createForm(table.id, formName, description);
+  if (tableWasCreated) {
+    // 新表直接通过表单题目接口创建收集字段，避免“建字段后立刻建表单”时
+    // 飞书只同步到部分字段，造成末尾题目随机缺失。
+    await createFormQuestions(table.id, form.id, inputFields, desiredQuestions);
+  } else {
+    await ensureFields(table.id, inputFields, fields);
+  }
   await configureForm(
     table.id,
     form,
-    kind === "selection" ? selectionQuestions : recommendationQuestions,
-    !existingForm,
+    inputFields,
+    desiredQuestions,
+    tableWasCreated || !existingForm,
   );
   // 后台字段必须在表单创建和配置完成后再添加。飞书的“删除表单题目”
   // 会同时删除底层数据表字段；后添加的字段则保留在表中且不会暴露给填写者。
+  fields = await listFields(table.id, true);
   await ensureFields(table.id, adminFields, fields);
   return table;
 }
