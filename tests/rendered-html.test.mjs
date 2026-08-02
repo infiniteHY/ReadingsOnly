@@ -16,15 +16,23 @@ test("coordinator page contains the complete primary workflow", async () => {
 });
 
 test("round-specific Feishu tables replace the fixed selection table", async () => {
-  const [feishu, route] = await Promise.all([
+  const [feishu, grouping, schema, route] = await Promise.all([
     readFile(new URL("../lib/feishu.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/grouping.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/selection-schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/round-tables/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(feishu, /选书汇总｜/);
   assert.match(feishu, /推书汇总｜/);
   assert.match(feishu, /ensureRoundResources/);
+  assert.match(feishu, /await ensureFields\(table\.id, adminFields, fields\)/);
+  assert.doesNotMatch(feishu, /method: "DELETE"/);
   assert.match(feishu, /"期次": round/);
   assert.doesNotMatch(feishu, /LARK_SELECTION_TABLE_ID/);
+  assert.match(schema, /选书1组号/);
+  assert.match(schema, /选书2组号/);
+  assert.match(schema, /选书3组号/);
+  assert.match(grouping, /SELECTION_GROUP_FIELDS/);
   assert.match(route, /isAdminRequest/);
   assert.match(route, /ensureRoundResources/);
 });

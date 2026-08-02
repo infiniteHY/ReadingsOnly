@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { RecordRow } from "./grouping";
+import { SELECTION_GROUP_FIELDS, SELECTION_STATUS_FIELD } from "./selection-schema";
 
 type AppEnv = {
   LARK_APP_ID?: string;
@@ -39,10 +40,8 @@ const selectionInputFields: FieldDefinition[] = [
 ];
 
 const selectionAdminFields: FieldDefinition[] = [
-  { type: "text", name: "有效状态", description: "由统导平台回写：有效、已替代或具体错误原因", style: { type: "plain" } },
-  { type: "text", name: "选书1组号", description: "由统导平台回写", style: { type: "plain" } },
-  { type: "text", name: "选书2组号", description: "由统导平台回写", style: { type: "plain" } },
-  { type: "text", name: "选书3组号", description: "由统导平台回写", style: { type: "plain" } },
+  { type: "text", name: SELECTION_STATUS_FIELD, description: "由统导平台回写：有效、已替代或具体错误原因", style: { type: "plain" } },
+  ...SELECTION_GROUP_FIELDS.map((name) => ({ type: "text", name, description: "由统导平台回写", style: { type: "plain" } })),
   { type: "created_at", name: "提交时间", style: { format: "yyyy-MM-dd HH:mm" } },
 ];
 
@@ -232,6 +231,19 @@ async function createField(tableId: string, field: FieldDefinition) {
   return { id, name: field.name, type: field.type };
 }
 
+async function ensureFields(tableId: string, definitions: FieldDefinition[], fields: FieldItem[]) {
+  for (const definition of definitions) {
+    const existing = fields.find((field) => field.name === definition.name);
+    if (!existing) {
+      fields.push(await createField(tableId, definition));
+      continue;
+    }
+    if (existing.type !== definition.type) {
+      throw new Error(`飞书字段“${definition.name}”类型应为 ${definition.type}，当前为 ${existing.type}`);
+    }
+  }
+}
+
 async function createForm(tableId: string, name: string, description: string) {
   const values = config();
   const data = await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms`, {
@@ -248,23 +260,11 @@ async function configureForm(
   tableId: string,
   form: FormItem,
   desired: { name: string; description: string; required: boolean; option_display_mode?: number }[],
-  hiddenNames: string[],
   waitUntilReady = false,
 ) {
   const values = config();
   const questions = await listFormQuestions(tableId, form.id, waitUntilReady);
-  const hiddenIds = questions
-    .filter((question) => hiddenNames.includes(String(question.title ?? question.name ?? "")))
-    .map(itemId)
-    .filter(Boolean);
-  if (hiddenIds.length) {
-    await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms/${form.id}/questions`, {
-      method: "DELETE",
-      body: JSON.stringify({ question_ids: hiddenIds }),
-    }, { operation: "隐藏表单内部管理字段", retryNotFound: waitUntilReady });
-  }
-  const remaining = hiddenIds.length ? await listFormQuestions(tableId, form.id, waitUntilReady) : questions;
-  const byName = new Map(remaining.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
+  const byName = new Map(questions.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
   const updates = desired.map((question) => ({
     id: byName.get(question.name),
     title: question.name,
@@ -293,9 +293,7 @@ async function ensureResource(kind: "selection" | "recommendation", round: strin
   const inputFields = kind === "selection" ? selectionInputFields : recommendationInputFields;
   const adminFields = kind === "selection" ? selectionAdminFields : recommendationAdminFields;
   const fields = await listFields(table.id, tableWasCreated);
-  for (const definition of [...inputFields, ...adminFields]) {
-    if (!fields.some((field) => field.name === definition.name)) fields.push(await createField(table.id, definition));
-  }
+  await ensureFields(table.id, inputFields, fields);
 
   const formName = `${round} ${kind === "selection" ? "选书" : "荐书"}表单`;
   const description = kind === "selection"
@@ -308,9 +306,11 @@ async function ensureResource(kind: "selection" | "recommendation", round: strin
     table.id,
     form,
     kind === "selection" ? selectionQuestions : recommendationQuestions,
-    adminFields.map((field) => field.name),
     !existingForm,
   );
+  // 后台字段必须在表单创建和配置完成后再添加。飞书的“删除表单题目”
+  // 会同时删除底层数据表字段；后添加的字段则保留在表中且不会暴露给填写者。
+  await ensureFields(table.id, adminFields, fields);
   return table;
 }
 
@@ -363,6 +363,8 @@ export async function loadFeishuData(round: string) {
 export async function updateSelectionRecords(tableId: string, records: { recordId: string; fields: Record<string, unknown> }[]) {
   if (!records.length) return;
   const values = config();
+  const fields = await listFields(tableId, true);
+  await ensureFields(tableId, selectionAdminFields, fields);
   for (let offset = 0; offset < records.length; offset += 1000) {
     const batch = records.slice(offset, offset + 1000).map((record) => ({ record_id: record.recordId, fields: record.fields }));
     await request(`/open-apis/bitable/v1/apps/${values.LARK_BASE_TOKEN}/tables/${tableId}/records/batch_update`, {

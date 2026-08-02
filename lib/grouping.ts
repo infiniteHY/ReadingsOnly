@@ -1,8 +1,9 @@
+import { SELECTION_GROUP_FIELDS, SELECTION_STATUS_FIELD } from "./selection-schema";
+
 export type RecordRow = Record<string, unknown> & { recordId?: string };
 export type History = { counts: Map<string, number>; lastPairs: Set<string>; lastRound: string };
 
 const choices = ["选书1", "选书2", "选书3"] as const;
-const groupFields = ["选书1组号", "选书2组号", "选书3组号"] as const;
 
 export function textValue(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -232,7 +233,7 @@ export function makeGrouping(effective: Evaluation[], history: History, seed: st
       const groupNo = group.length === 1 ? "待协调" : String(index + 1);
       for (const participant of group) {
         const fields = assignments.get(participant.recordId) ?? {};
-        fields[groupFields[participant.choiceIndex]] = groupNo;
+        fields[SELECTION_GROUP_FIELDS[participant.choiceIndex]] = groupNo;
         assignments.set(participant.recordId, fields);
       }
       exportRows.push({ book: entry.book, group: groupNo, members: group.map((item) => item.name), memberKeys: group.map((item) => item.key) });
@@ -245,10 +246,8 @@ export function patchesForEvaluations(evaluations: Evaluation[], assignments: Ma
   return evaluations.filter((item) => item.row.recordId).map((item) => ({
     recordId: item.row.recordId as string,
     fields: {
-      "有效状态": item.status,
-      "选书1组号": null,
-      "选书2组号": null,
-      "选书3组号": null,
+      [SELECTION_STATUS_FIELD]: item.status,
+      ...Object.fromEntries(SELECTION_GROUP_FIELDS.map((field) => [field, null])),
       ...(assignments.get(item.row.recordId as string) ?? {}),
     },
   }));
