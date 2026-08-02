@@ -27,6 +27,8 @@ test("round-specific Feishu tables replace the fixed selection table", async () 
   assert.match(feishu, /ensureRoundResources/);
   assert.match(feishu, /await ensureFields\(table\.id, adminFields, fields\)/);
   assert.match(feishu, /createFormQuestions/);
+  assert.match(feishu, /waitForFormQuestions/);
+  assert.match(feishu, /FEISHU_FORM_SYNC_RETRY_DELAYS_MS/);
   assert.match(feishu, /stillMissing/);
   assert.doesNotMatch(feishu, /method: "DELETE"|question_ids|隐藏表单内部管理字段/);
   assert.match(feishu, /"期次": round/);

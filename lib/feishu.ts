@@ -75,6 +75,7 @@ const recommendationQuestions = [
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
 const FEISHU_READY_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 3_000];
+const FEISHU_FORM_SYNC_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000, 8_000];
 
 type RequestOptions = {
   operation?: string;
@@ -193,6 +194,26 @@ async function listFormQuestions(tableId: string, formId: string, waitUntilReady
   return (data.questions ?? data.items ?? []) as Record<string, unknown>[];
 }
 
+function questionNames(questions: Record<string, unknown>[]) {
+  return new Set(questions.map((question) => String(question.title ?? question.name ?? "")));
+}
+
+async function waitForFormQuestions(
+  tableId: string,
+  formId: string,
+  expected: QuestionDefinition[],
+  waitUntilReady = false,
+) {
+  let questions = await listFormQuestions(tableId, formId, waitUntilReady);
+  for (const delay of FEISHU_FORM_SYNC_RETRY_DELAYS_MS) {
+    const names = questionNames(questions);
+    if (expected.every((question) => names.has(question.name))) return questions;
+    await sleep(delay);
+    questions = await listFormQuestions(tableId, formId, true);
+  }
+  return questions;
+}
+
 async function listRecords(tableId: string): Promise<RecordRow[]> {
   const values = config();
   const rows: RecordRow[] = [];
@@ -294,7 +315,7 @@ async function configureForm(
   waitUntilReady = false,
 ) {
   const values = config();
-  let questions = await listFormQuestions(tableId, form.id, waitUntilReady);
+  let questions = await waitForFormQuestions(tableId, form.id, desired, waitUntilReady);
   let byName = new Map(questions.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
   const missing = desired.filter((question) => !byName.has(question.name));
   if (missing.length) {
@@ -306,7 +327,7 @@ async function configureForm(
       throw new Error(`飞书表单“${form.name}”缺少题目：${detachedNames.join("、")}；同名字段未挂载到表单，且当前飞书环境禁止 API 删除字段，请在飞书中人工补题后重试`);
     }
     await createFormQuestions(tableId, form.id, inputFields, missing);
-    questions = await listFormQuestions(tableId, form.id, true);
+    questions = await waitForFormQuestions(tableId, form.id, desired, true);
     byName = new Map(questions.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
   }
   const stillMissing = desired.filter((question) => !byName.has(question.name));
