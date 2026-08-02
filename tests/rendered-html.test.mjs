@@ -11,7 +11,7 @@ test("coordinator page contains the complete primary workflow", async () => {
   assert.match(client, /下载 CSV/);
   assert.match(client, /按期次归档/);
   assert.match(client, /推书汇总/);
-  assert.match(client, /初始化.*本期/);
+  assert.match(client, /同步.*本期/);
   assert.doesNotMatch(client, /codex-preview|Building your site|react-loading-skeleton/);
 });
 
@@ -24,21 +24,19 @@ test("round-specific Feishu tables replace the fixed selection table", async () 
   ]);
   assert.match(feishu, /选书汇总｜/);
   assert.match(feishu, /推书汇总｜/);
-  assert.match(feishu, /ensureRoundResources/);
-  assert.match(feishu, /await ensureFields\(table\.id, adminFields, fields\)/);
-  assert.match(feishu, /createFormQuestions/);
-  assert.match(feishu, /waitForFormQuestions/);
-  assert.match(feishu, /FEISHU_FORM_SYNC_RETRY_DELAYS_MS/);
-  assert.match(feishu, /stillMissing/);
-  assert.doesNotMatch(feishu, /method: "DELETE"|question_ids|隐藏表单内部管理字段/);
+  assert.match(feishu, /syncRoundResources/);
+  assert.match(feishu, /请先在飞书中人工创建/);
+  assert.match(feishu, /请人工补齐后重新同步/);
+  assert.doesNotMatch(feishu, /createTable|createField|ensureFields|createFormQuestions|configureForm|method: "DELETE"|question_ids/);
   assert.match(feishu, /"期次": round/);
   assert.doesNotMatch(feishu, /LARK_SELECTION_TABLE_ID/);
   assert.match(schema, /选书1组号/);
   assert.match(schema, /选书2组号/);
   assert.match(schema, /选书3组号/);
+  assert.doesNotMatch(schema, /选书[456]/);
   assert.match(grouping, /SELECTION_GROUP_FIELDS/);
   assert.match(route, /isAdminRequest/);
-  assert.match(route, /ensureRoundResources/);
+  assert.match(route, /syncRoundResources/);
 });
 
 test("Cloudflare build, D1 migration, and social asset are present", async () => {

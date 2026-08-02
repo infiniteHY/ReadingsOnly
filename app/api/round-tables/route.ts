@@ -1,5 +1,5 @@
 import { isAdminRequest } from "../../../lib/auth";
-import { ensureRoundResources, getRoundResources, validRound } from "../../../lib/feishu";
+import { getRoundResources, syncRoundResources, validRound } from "../../../lib/feishu";
 
 function invalidRound(round: string) {
   return !validRound(round)
@@ -26,8 +26,8 @@ export async function POST(request: Request) {
     const round = body.round?.trim() ?? "";
     const error = invalidRound(round);
     if (error) return error;
-    return Response.json({ ok: true, data: await ensureRoundResources(round) });
+    return Response.json({ ok: true, data: await syncRoundResources(round) });
   } catch (error) {
-    return Response.json({ ok: false, error: error instanceof Error ? error.message : "初始化期次表失败" }, { status: 500 });
+    return Response.json({ ok: false, error: error instanceof Error ? error.message : "同步期次表失败" }, { status: 500 });
   }
 }

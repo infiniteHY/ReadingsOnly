@@ -52,7 +52,7 @@ function RoundTableCard({ title, copy, resource }: { title: string; copy: string
   return (
     <article className={`round-table-card ${resource ? "ready" : "missing"}`}>
       <div className="round-table-title">
-        <span>{resource ? "已就绪" : "待创建"}</span>
+        <span>{resource ? "已同步" : "待人工创建"}</span>
         <strong>{title}</strong>
       </div>
       <p>{copy}</p>
@@ -64,7 +64,7 @@ function RoundTableCard({ title, copy, resource }: { title: string; copy: string
             {formUrl && <a href={formUrl} target="_blank" rel="noreferrer">打开表单 ↗</a>}
           </div>
         </div>
-      ) : <small>初始化后会在飞书 Base 中生成独立数据表和专属表单。</small>}
+      ) : <small>请先在飞书 Base 中人工创建本期数据表和表单，再回平台同步。</small>}
     </article>
   );
 }
@@ -80,7 +80,7 @@ export function CoordinatorApp() {
   const [roundResources, setRoundResources] = useState<RoundResources | null>(null);
   const [roundTablesLoading, setRoundTablesLoading] = useState(false);
   const [roundTablesError, setRoundTablesError] = useState("");
-  const [initializingRound, setInitializingRound] = useState(false);
+  const [syncingRound, setSyncingRound] = useState(false);
   const currentRoundResources = roundResources?.round === round.trim() ? roundResources : null;
 
   useEffect(() => {
@@ -127,9 +127,9 @@ export function CoordinatorApp() {
     window.location.replace("/login");
   }
 
-  async function initializeRoundTables() {
+  async function syncRoundTables() {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(round.trim())) return setRoundTablesError("期次格式应为 YYYY-MM，例如 2026-08");
-    setInitializingRound(true);
+    setSyncingRound(true);
     setRoundTablesError("");
     try {
       const response = await fetch(`${API_URL}/api/round-tables`, {
@@ -138,13 +138,13 @@ export function CoordinatorApp() {
         body: JSON.stringify({ round: round.trim() }),
       });
       const payload = await response.json() as { ok: boolean; error?: string; data: RoundResources };
-      if (!response.ok || !payload.ok) throw new Error(payload.error || "初始化期次表失败");
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "同步期次表失败");
       setRoundResources(payload.data);
       setBackendReady(true);
     } catch (caught) {
-      setRoundTablesError(caught instanceof Error ? caught.message : "初始化期次表失败");
+      setRoundTablesError(caught instanceof Error ? caught.message : "同步期次表失败");
     } finally {
-      setInitializingRound(false);
+      setSyncingRound(false);
     }
   }
 
@@ -223,19 +223,17 @@ export function CoordinatorApp() {
       <section className="round-tables-panel" aria-label="期次收集表">
         <div className="round-tables-heading">
           <div><span>按期次归档</span><h2>{round || "本期"} 收集中心</h2></div>
-          <p>每一期分别创建推书汇总、荐书表单、选书汇总和选书表单。</p>
+          <p>每一期先在飞书人工创建推书汇总、选书汇总及表单，平台只负责同步、读取和写回分组。</p>
         </div>
         <div className="round-table-grid">
           <RoundTableCard title="推书汇总" copy="社员按本期荐书，书导在该表勾选最终入选书目。" resource={currentRoundResources?.recommendation ?? null} />
-          <RoundTableCard title="选书汇总" copy="社员从本期书单选择 1—3 本书，统导在该表完成分组。" resource={currentRoundResources?.selection ?? null} />
+          <RoundTableCard title="选书汇总" copy="社员从本期 6 本书中选择 1—3 本，统导在该表完成分组。" resource={currentRoundResources?.selection ?? null} />
         </div>
         <div className="round-tables-actions">
-          <span>{roundTablesLoading ? "正在检查飞书期次表…" : roundTablesError || (currentRoundResources?.selection && currentRoundResources?.recommendation ? "本期期次表与表单均已就绪。" : "缺少的期次表可以一键补齐，现有数据不会被覆盖。")}</span>
-          {(!currentRoundResources?.selection || !currentRoundResources?.recommendation) && (
-            <button className="button primary" onClick={initializeRoundTables} disabled={initializingRound || roundTablesLoading}>
-              {initializingRound ? "正在创建…" : `初始化 ${round || "本期"}`}
-            </button>
-          )}
+          <span>{roundTablesLoading ? "正在检查飞书期次表…" : roundTablesError || (currentRoundResources?.selection && currentRoundResources?.recommendation ? "已发现本期人工创建的汇总表；可再次同步校验字段。" : "请先在飞书人工建表，再点击同步。平台不会创建或修改表结构。")}</span>
+          <button className="button primary" onClick={syncRoundTables} disabled={syncingRound || roundTablesLoading}>
+            {syncingRound ? "正在同步…" : `同步 ${round || "本期"}`}
+          </button>
         </div>
       </section>
 

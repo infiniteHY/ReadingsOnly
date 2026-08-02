@@ -1,9 +1,7 @@
-import { SELECTION_GROUP_FIELDS, SELECTION_STATUS_FIELD } from "./selection-schema";
+import { SELECTION_CHOICE_FIELDS, SELECTION_GROUP_FIELDS, SELECTION_STATUS_FIELD } from "./selection-schema";
 
 export type RecordRow = Record<string, unknown> & { recordId?: string };
 export type History = { counts: Map<string, number>; lastPairs: Set<string>; lastRound: string };
-
-const choices = ["选书1", "选书2", "选书3"] as const;
 
 export function textValue(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -63,7 +61,7 @@ export function validateSelections(memberRows: RecordRow[], selectionRows: Recor
     .map((row, index) => {
       const key = normalized(row["姓名/昵称"]);
       const members = directory.get(key) ?? [];
-      const choiceSlots = choices.map((field, choiceIndex) => ({ book: textValue(row[field]), choiceIndex }))
+      const choiceSlots = SELECTION_CHOICE_FIELDS.map((field, choiceIndex) => ({ book: textValue(row[field]), choiceIndex }))
         .filter(({ book }) => book && normalized(book) !== "待设置");
       const selected = choiceSlots.map(({ book }) => book);
       let error = "";
