@@ -74,6 +74,13 @@ const recommendationQuestions = [
 
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
+const FEISHU_READY_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 3_000];
+
+type RequestOptions = {
+  operation?: string;
+  retryNotFound?: boolean;
+};
+
 function config() {
   const values = env as unknown as AppEnv;
   const required = ["LARK_APP_ID", "LARK_APP_SECRET", "LARK_BASE_TOKEN", "LARK_MEMBER_TABLE_ID"] as const;
@@ -104,19 +111,39 @@ async function tenantToken() {
   return tokenCache.token;
 }
 
-async function request(path: string, init?: RequestInit) {
-  const token = await tenantToken();
-  const response = await fetch(`https://open.feishu.cn${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json; charset=utf-8",
-      ...(init?.headers ?? {}),
-    },
-  });
-  const data = await response.json() as { code: number; msg: string; data?: Record<string, unknown> };
-  if (!response.ok || data.code !== 0) throw new Error(`飞书接口失败：${data.msg || response.status}`);
-  return data.data ?? {};
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isNotFound(response: Response, data: { code: number; msg: string }) {
+  const message = String(data.msg ?? "").toLowerCase().replaceAll("_", " ");
+  return response.status === 404 || message === "not found" || message.includes("not found");
+}
+
+async function request(path: string, init?: RequestInit, options: RequestOptions = {}) {
+  for (let attempt = 0; ; attempt += 1) {
+    const token = await tenantToken();
+    const response = await fetch(`https://open.feishu.cn${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json; charset=utf-8",
+        ...(init?.headers ?? {}),
+      },
+    });
+    const data = await response.json() as { code: number; msg: string; data?: Record<string, unknown> };
+    if (response.ok && data.code === 0) return data.data ?? {};
+
+    const retryDelay = FEISHU_READY_RETRY_DELAYS_MS[attempt];
+    if (options.retryNotFound && retryDelay !== undefined && isNotFound(response, data)) {
+      await sleep(retryDelay);
+      continue;
+    }
+
+    const operation = options.operation ? `${options.operation}：` : "";
+    const code = data.code ? `（code ${data.code}）` : "";
+    throw new Error(`飞书接口失败：${operation}${data.msg || response.status}${code}`);
+  }
 }
 
 function itemId(value: Record<string, unknown>) {
@@ -130,16 +157,24 @@ async function listTables(): Promise<TableItem[]> {
   return items.map((item) => ({ id: itemId(item), name: String(item.name ?? item.table_name ?? "") })).filter((item) => item.id && item.name);
 }
 
-async function listFields(tableId: string): Promise<FieldItem[]> {
+async function listFields(tableId: string, waitUntilReady = false): Promise<FieldItem[]> {
   const values = config();
-  const data = await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/fields?offset=0&limit=200`);
+  const data = await request(
+    `/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/fields?offset=0&limit=200`,
+    undefined,
+    { operation: "读取新建数据表字段", retryNotFound: waitUntilReady },
+  );
   const items = (data.items ?? data.fields ?? []) as Record<string, unknown>[];
   return items.map((item) => ({ id: itemId(item), name: String(item.name ?? item.field_name ?? ""), type: String(item.type ?? "") })).filter((item) => item.id && item.name);
 }
 
-async function listForms(tableId: string): Promise<FormItem[]> {
+async function listForms(tableId: string, waitUntilReady = false): Promise<FormItem[]> {
   const values = config();
-  const data = await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms?page_size=100`);
+  const data = await request(
+    `/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms?page_size=100`,
+    undefined,
+    { operation: "读取新建数据表表单", retryNotFound: waitUntilReady },
+  );
   const items = (data.forms ?? data.items ?? []) as Record<string, unknown>[];
   return items.map((item) => ({
     id: itemId(item),
@@ -148,9 +183,13 @@ async function listForms(tableId: string): Promise<FormItem[]> {
   })).filter((item) => item.id && item.name);
 }
 
-async function listFormQuestions(tableId: string, formId: string) {
+async function listFormQuestions(tableId: string, formId: string, waitUntilReady = false) {
   const values = config();
-  const data = await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms/${formId}/questions`);
+  const data = await request(
+    `/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms/${formId}/questions`,
+    undefined,
+    { operation: "读取新建表单题目", retryNotFound: waitUntilReady },
+  );
   return (data.questions ?? data.items ?? []) as Record<string, unknown>[];
 }
 
@@ -198,7 +237,7 @@ async function createForm(tableId: string, name: string, description: string) {
   const data = await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms`, {
     method: "POST",
     body: JSON.stringify({ name, description }),
-  });
+  }, { operation: `创建“${name}”`, retryNotFound: true });
   const form = (data.form ?? data) as Record<string, unknown>;
   const id = itemId(form);
   if (!id) throw new Error(`飞书已创建“${name}”，但没有返回表单 ID`);
@@ -210,9 +249,10 @@ async function configureForm(
   form: FormItem,
   desired: { name: string; description: string; required: boolean; option_display_mode?: number }[],
   hiddenNames: string[],
+  waitUntilReady = false,
 ) {
   const values = config();
-  const questions = await listFormQuestions(tableId, form.id);
+  const questions = await listFormQuestions(tableId, form.id, waitUntilReady);
   const hiddenIds = questions
     .filter((question) => hiddenNames.includes(String(question.title ?? question.name ?? "")))
     .map(itemId)
@@ -221,9 +261,9 @@ async function configureForm(
     await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms/${form.id}/questions`, {
       method: "DELETE",
       body: JSON.stringify({ question_ids: hiddenIds }),
-    });
+    }, { operation: "隐藏表单内部管理字段", retryNotFound: waitUntilReady });
   }
-  const remaining = hiddenIds.length ? await listFormQuestions(tableId, form.id) : questions;
+  const remaining = hiddenIds.length ? await listFormQuestions(tableId, form.id, waitUntilReady) : questions;
   const byName = new Map(remaining.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
   const updates = desired.map((question) => ({
     id: byName.get(question.name),
@@ -236,21 +276,23 @@ async function configureForm(
     await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/forms/${form.id}/questions`, {
       method: "PATCH",
       body: JSON.stringify({ questions: updates }),
-    });
+    }, { operation: "配置表单题目", retryNotFound: waitUntilReady });
   }
 }
 
 async function ensureResource(kind: "selection" | "recommendation", round: string, knownTables: TableItem[]) {
   const tableName = roundTableName(kind, round);
   let table = knownTables.find((item) => item.name === tableName);
+  let tableWasCreated = false;
   if (!table) {
     table = await createTable(tableName);
     knownTables.push(table);
+    tableWasCreated = true;
   }
 
   const inputFields = kind === "selection" ? selectionInputFields : recommendationInputFields;
   const adminFields = kind === "selection" ? selectionAdminFields : recommendationAdminFields;
-  const fields = await listFields(table.id);
+  const fields = await listFields(table.id, tableWasCreated);
   for (const definition of [...inputFields, ...adminFields]) {
     if (!fields.some((field) => field.name === definition.name)) fields.push(await createField(table.id, definition));
   }
@@ -259,13 +301,15 @@ async function ensureResource(kind: "selection" | "recommendation", round: strin
   const description = kind === "selection"
     ? `${round} 期选书。请填写姓名/昵称和校验码，并选择 1—3 本书；重复提交时以最新有效记录为准。`
     : `${round} 期荐书。请填写推书人、完整书名和推荐语；最终书单由书导人工确定。`;
-  const forms = await listForms(table.id);
-  const form = forms.find((item) => item.name === formName) ?? await createForm(table.id, formName, description);
+  const forms = await listForms(table.id, tableWasCreated);
+  const existingForm = forms.find((item) => item.name === formName);
+  const form = existingForm ?? await createForm(table.id, formName, description);
   await configureForm(
     table.id,
     form,
     kind === "selection" ? selectionQuestions : recommendationQuestions,
     adminFields.map((field) => field.name),
+    !existingForm,
   );
   return table;
 }
