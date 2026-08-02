@@ -232,13 +232,6 @@ async function createField(tableId: string, field: FieldDefinition) {
   return { id, name: field.name, type: field.type };
 }
 
-async function deleteField(tableId: string, fieldId: string, fieldName: string) {
-  const values = config();
-  await request(`/open-apis/base/v3/bases/${values.LARK_BASE_TOKEN}/tables/${tableId}/fields/${fieldId}`, {
-    method: "DELETE",
-  }, { operation: `清理未挂载到表单的空字段“${fieldName}”`, retryNotFound: true });
-}
-
 async function ensureFields(tableId: string, definitions: FieldDefinition[], fields: FieldItem[]) {
   for (const definition of definitions) {
     const existing = fields.find((field) => field.name === definition.name);
@@ -293,12 +286,6 @@ async function createFormQuestions(
   }, { operation: "创建完整表单题目", retryNotFound: true });
 }
 
-async function tableHasRecords(tableId: string) {
-  const values = config();
-  const data = await request(`/open-apis/bitable/v1/apps/${values.LARK_BASE_TOKEN}/tables/${tableId}/records?page_size=1`);
-  return ((data.items ?? []) as unknown[]).length > 0;
-}
-
 async function configureForm(
   tableId: string,
   form: FormItem,
@@ -311,13 +298,12 @@ async function configureForm(
   let byName = new Map(questions.map((question) => [String(question.title ?? question.name ?? ""), itemId(question)]));
   const missing = desired.filter((question) => !byName.has(question.name));
   if (missing.length) {
-    if (await tableHasRecords(tableId)) {
-      throw new Error(`飞书表单“${form.name}”缺少题目：${missing.map((item) => item.name).join("、")}；表内已有提交，为避免数据损失已停止自动修复`);
-    }
     const fields = await listFields(tableId, true);
-    for (const question of missing) {
-      const detachedField = fields.find((field) => field.name === question.name);
-      if (detachedField) await deleteField(tableId, detachedField.id, detachedField.name);
+    const detachedNames = missing
+      .filter((question) => fields.some((field) => field.name === question.name))
+      .map((question) => question.name);
+    if (detachedNames.length) {
+      throw new Error(`飞书表单“${form.name}”缺少题目：${detachedNames.join("、")}；同名字段未挂载到表单，且当前飞书环境禁止 API 删除字段，请在飞书中人工补题后重试`);
     }
     await createFormQuestions(tableId, form.id, inputFields, missing);
     questions = await listFormQuestions(tableId, form.id, true);
@@ -368,8 +354,6 @@ async function ensureResource(kind: "selection" | "recommendation", round: strin
     // 新表直接通过表单题目接口创建收集字段，避免“建字段后立刻建表单”时
     // 飞书只同步到部分字段，造成末尾题目随机缺失。
     await createFormQuestions(table.id, form.id, inputFields, desiredQuestions);
-  } else {
-    await ensureFields(table.id, inputFields, fields);
   }
   await configureForm(
     table.id,
