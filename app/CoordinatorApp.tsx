@@ -44,7 +44,10 @@ export function CoordinatorApp() {
 
   useEffect(() => {
     fetch(`${API_URL}/api/health`)
-      .then((response) => response.json() as Promise<{ ok: boolean; configured: boolean }>)
+      .then((response) => {
+        if (response.status === 401) window.location.replace("/login");
+        return response.json() as Promise<{ ok: boolean; configured: boolean }>;
+      })
       .then((payload) => setBackendReady(payload.ok && payload.configured))
       .catch(() => setBackendReady(false));
     fetch(`${API_URL}/api/history`)
@@ -52,6 +55,11 @@ export function CoordinatorApp() {
       .then((payload) => payload.ok && setHistory(payload.data))
       .catch(() => undefined);
   }, []);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.replace("/login");
+  }
 
   async function run(apply: boolean) {
     if (!round.trim()) return setError("请先填写期次");
@@ -110,9 +118,12 @@ export function CoordinatorApp() {
           <span className="brand-mark">阅</span>
           <span>阅读社 · 统导</span>
         </a>
-        <div className={`connection ${backendReady === false ? "offline" : ""}`}>
-          <span className="connection-dot" />
-          {backendReady === null ? "正在连接" : backendReady ? "飞书与数据库就绪" : "等待部署配置"}
+        <div className="topbar-actions">
+          <div className={`connection ${backendReady === false ? "offline" : ""}`}>
+            <span className="connection-dot" />
+            {backendReady === null ? "正在连接" : backendReady ? "飞书与数据库就绪" : "等待部署配置"}
+          </div>
+          <button className="logout-button" onClick={logout}>退出</button>
         </div>
       </header>
 

@@ -30,3 +30,19 @@ test("Cloudflare build, D1 migration, and social asset are present", async () =>
   await access(new URL("../public/og.png", import.meta.url));
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });
+
+test("single-admin login protects the workbench and server APIs", async () => {
+  const [auth, page, grouping, login] = await Promise.all([
+    readFile(new URL("../lib/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/grouping/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/login/LoginForm.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(auth, /ADMIN_PASSWORD/);
+  assert.match(auth, /ADMIN_SESSION_SECRET/);
+  assert.match(auth, /HttpOnly; SameSite=Strict/);
+  assert.match(page, /redirect\("\/login"\)/);
+  assert.match(grouping, /isAdminRequest/);
+  assert.match(login, /username: "admin"/);
+  assert.doesNotMatch(auth, /ADMIN_PASSWORD\s*[:=]\s*["'][^"']+["']/);
+});

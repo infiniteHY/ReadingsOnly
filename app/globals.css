@@ -34,6 +34,23 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 .connection { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: #48a879; box-shadow: 0 0 0 5px rgba(72,168,121,.12); }
 .connection.offline .connection-dot { background: var(--accent); box-shadow: 0 0 0 5px rgba(233,111,60,.12); }
+.topbar-actions { display: flex; align-items: center; gap: 18px; }
+.logout-button { border: 0; border-bottom: 1px solid rgba(23,61,53,.38); padding: 3px 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; }
+.logout-button:hover { color: var(--accent); border-color: var(--accent); }
+
+.login-shell { min-height: 100vh; display: grid; place-items: center; padding: 28px; }
+.login-card { width: min(430px, 100%); padding: 44px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 28px 80px rgba(23,61,53,.14); }
+.login-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--ink); color: #fffaf0; font-family: STKaiti, KaiTi, serif; font-size: 22px; }
+.login-kicker { margin: 24px 0 8px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .18em; }
+.login-card h1 { margin: 0; font-family: STSong, Songti SC, serif; font-size: 38px; font-weight: 600; }
+.login-copy { margin: 13px 0 30px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.login-card label { display: block; margin: 17px 0 8px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+.login-card input { width: 100%; height: 52px; border: 1px solid var(--line); border-radius: 3px; padding: 0 15px; background: #fff; color: var(--ink); outline: none; }
+.login-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(233,111,60,.12); }
+.login-card input[readonly] { background: var(--paper); color: var(--muted); }
+.login-error { margin: 14px 0 0; color: #a54425; font-size: 13px; }
+.login-submit { width: 100%; margin-top: 22px; }
+.login-card small { display: block; margin-top: 17px; color: #8d9a95; text-align: center; }
 
 .hero { padding: 78px 0 48px; max-width: 840px; }
 .eyebrow { display: flex; align-items: center; gap: 14px; color: var(--accent); font-size: 13px; font-weight: 800; letter-spacing: .18em; }
@@ -122,6 +139,9 @@ footer { display: flex; justify-content: space-between; padding: 25px 0 34px; bo
   main { width: min(100% - 24px, 1160px); }
   .topbar { height: 68px; }
   .connection { font-size: 0; }
+  .topbar-actions { gap: 12px; }
+  .login-shell { width: 100%; padding: 14px; }
+  .login-card { padding: 30px 24px; }
   .hero { padding: 52px 0 32px; }
   .hero h1 { font-size: 48px; }
   .hero p { font-size: 16px; }

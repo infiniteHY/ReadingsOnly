@@ -1,8 +1,10 @@
+import { isAdminRequest } from "../../../lib/auth";
 import { getRoundHistory, historyRows, saveRound } from "../../../lib/database";
 import { loadFeishuData, updateSelectionRecords } from "../../../lib/feishu";
 import { historyFromRows, makeGrouping, patchesForEvaluations, validateSelections } from "../../../lib/grouping";
 
 export async function POST(request: Request) {
+  if (!await isAdminRequest(request)) return Response.json({ ok: false, error: "登录已过期，请重新登录" }, { status: 401 });
   try {
     const body = await request.json() as { round?: string; apply?: boolean };
     const round = body.round?.trim() ?? "";
