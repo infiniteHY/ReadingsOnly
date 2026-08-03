@@ -43,7 +43,7 @@ const selectionRequiredFields = [
   ...SELECTION_GROUP_FIELDS,
 ];
 
-const recommendationRequiredFields = ["书名", "推书人", "推荐语", "入选"];
+const recommendationRequiredFields = ["书名", "推荐人", "推荐语", "入选"];
 const selectionWriteFields = [SELECTION_STATUS_FIELD, ...SELECTION_GROUP_FIELDS];
 
 let tokenCache: { token: string; expiresAt: number } | null = null;
@@ -223,7 +223,7 @@ export async function loadRoundBooks(round: string) {
       return {
         title: textValue(row["书名"]),
         recommendation: textValue(row["推荐语"]),
-        recommender: textValue(row["推书人"]),
+        recommender: textValue(row["推荐人"]),
         selected: checkboxValue(row["入选"]),
         order: Number.isFinite(order) && order > 0 ? order : Number.POSITIVE_INFINITY,
         index,

@@ -67,6 +67,9 @@ test("round-specific Feishu tables replace the fixed selection table", async () 
   assert.match(route, /isAdminRequest/);
   assert.match(route, /syncRoundResources/);
   assert.match(feishu, /loadRoundBooks/);
+  assert.match(feishu, /recommendationRequiredFields = \["书名", "推荐人", "推荐语", "入选"\]/);
+  assert.match(feishu, /recommender: textValue\(row\["推荐人"\]\)/);
+  assert.doesNotMatch(feishu, /推书人/);
   assert.match(feishu, /checkboxValue\(row\["入选"\]\)/);
   assert.match(booksRoute, /isAdminRequest/);
   assert.match(booksRoute, /loadRoundBooks/);
