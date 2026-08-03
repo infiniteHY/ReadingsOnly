@@ -34,16 +34,20 @@ test("coordinator page contains the complete primary workflow", async () => {
   assert.match(client, /下载 CSV/);
   assert.match(client, /按期次归档/);
   assert.match(client, /推书汇总/);
+  assert.match(client, /本期书单/);
+  assert.match(client, /导出图片卡片/);
+  assert.match(client, /toDataURL\("image\/png"\)/);
   assert.match(client, /同步.*本期/);
   assert.doesNotMatch(client, /codex-preview|Building your site|react-loading-skeleton/);
 });
 
 test("round-specific Feishu tables replace the fixed selection table", async () => {
-  const [feishu, grouping, schema, route] = await Promise.all([
+  const [feishu, grouping, schema, route, booksRoute] = await Promise.all([
     readFile(new URL("../lib/feishu.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/grouping.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/selection-schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/round-tables/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/round-books/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(feishu, /选书汇总｜/);
   assert.match(feishu, /推书汇总｜/);
@@ -62,6 +66,10 @@ test("round-specific Feishu tables replace the fixed selection table", async () 
   assert.doesNotMatch(grouping, /校验码/);
   assert.match(route, /isAdminRequest/);
   assert.match(route, /syncRoundResources/);
+  assert.match(feishu, /loadRoundBooks/);
+  assert.match(feishu, /checkboxValue\(row\["入选"\]\)/);
+  assert.match(booksRoute, /isAdminRequest/);
+  assert.match(booksRoute, /loadRoundBooks/);
 });
 
 test("Cloudflare build, D1 migration, and social asset are present", async () => {

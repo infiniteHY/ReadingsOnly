@@ -39,6 +39,33 @@ type RoundResources = {
   selection: RoundTableResource | null;
   recommendation: RoundTableResource | null;
 };
+type RoundBook = { title: string; recommendation: string; recommender: string };
+type RoundBookList = { round: string; tableId: string; books: RoundBook[] };
+
+async function requestRoundBooks(round: string, signal?: AbortSignal) {
+  const response = await fetch(`${API_URL}/api/round-books?round=${encodeURIComponent(round)}`, { signal });
+  const payload = await response.json() as { ok: boolean; error?: string; data: RoundBookList };
+  if (!response.ok || !payload.ok) throw new Error(payload.error || "读取本期书单失败");
+  return payload.data;
+}
+
+function wrappedCanvasLines(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const lines: string[] = [];
+  for (const paragraph of (text || "暂无推荐信息").split(/\r?\n/)) {
+    let line = "";
+    for (const character of paragraph) {
+      const next = line + character;
+      if (line && context.measureText(next).width > maxWidth) {
+        lines.push(line);
+        line = character;
+      } else {
+        line = next;
+      }
+    }
+    lines.push(line || " ");
+  }
+  return lines;
+}
 
 function defaultRound() {
   const parts = new Intl.DateTimeFormat("zh-CN", {
@@ -91,7 +118,11 @@ export function CoordinatorApp() {
   const [roundTablesLoading, setRoundTablesLoading] = useState(false);
   const [roundTablesError, setRoundTablesError] = useState("");
   const [syncingRound, setSyncingRound] = useState(false);
+  const [roundBookList, setRoundBookList] = useState<RoundBookList | null>(null);
+  const [roundBooksLoading, setRoundBooksLoading] = useState(false);
+  const [roundBooksError, setRoundBooksError] = useState("");
   const currentRoundResources = roundResources?.round === round.trim() ? roundResources : null;
+  const currentRoundBooks = roundBookList?.round === round.trim() ? roundBookList.books : [];
 
   useEffect(() => {
     fetch(`${API_URL}/api/health`)
@@ -132,6 +163,29 @@ export function CoordinatorApp() {
     };
   }, [round]);
 
+  useEffect(() => {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(round.trim())) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setRoundBooksLoading(true);
+      setRoundBooksError("");
+      try {
+        setRoundBookList(await requestRoundBooks(round.trim(), controller.signal));
+      } catch (caught) {
+        if (!controller.signal.aborted) {
+          setRoundBookList(null);
+          setRoundBooksError(caught instanceof Error ? caught.message : "读取本期书单失败");
+        }
+      } finally {
+        if (!controller.signal.aborted) setRoundBooksLoading(false);
+      }
+    }, 300);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [round]);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.replace("/login");
@@ -150,6 +204,13 @@ export function CoordinatorApp() {
       const payload = await response.json() as { ok: boolean; error?: string; data: RoundResources };
       if (!response.ok || !payload.ok) throw new Error(payload.error || "同步期次表失败");
       setRoundResources(payload.data);
+      try {
+        setRoundBookList(await requestRoundBooks(round.trim()));
+        setRoundBooksError("");
+      } catch (caught) {
+        setRoundBookList(null);
+        setRoundBooksError(caught instanceof Error ? caught.message : "读取本期书单失败");
+      }
       setBackendReady(true);
     } catch (caught) {
       setRoundTablesError(caught instanceof Error ? caught.message : "同步期次表失败");
@@ -220,6 +281,113 @@ export function CoordinatorApp() {
     URL.revokeObjectURL(url);
   }
 
+  function downloadBookListCard() {
+    if (!currentRoundBooks.length) return;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) return setRoundBooksError("当前浏览器无法生成图片，请更换浏览器后重试");
+    const width = 1080;
+    const padding = 76;
+    const contentWidth = width - padding * 2;
+    context.font = '28px "PingFang SC", "Microsoft YaHei", sans-serif';
+    const layouts = currentRoundBooks.map((book) => {
+      context.font = '600 42px "Songti SC", "STSong", serif';
+      const titleLines = wrappedCanvasLines(context, book.title, contentWidth - 154);
+      context.font = '28px "PingFang SC", "Microsoft YaHei", sans-serif';
+      const recommendationLines = wrappedCanvasLines(context, book.recommendation, contentWidth - 154);
+      const height = 86 + titleLines.length * 54 + recommendationLines.length * 42 + 72;
+      return { book, titleLines, recommendationLines, height };
+    });
+    const headerHeight = 292;
+    const gap = 22;
+    const footerHeight = 108;
+    canvas.width = width;
+    canvas.height = headerHeight + layouts.reduce((sum, layout) => sum + layout.height, 0) + gap * (layouts.length - 1) + footerHeight;
+
+    context.fillStyle = "#f3eee3";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#173d35";
+    context.fillRect(0, 0, 18, canvas.height);
+    context.fillStyle = "#e96f3c";
+    context.beginPath();
+    context.arc(width - 92, 82, 122, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "rgba(255,253,247,.3)";
+    context.beginPath();
+    context.arc(width - 44, 142, 94, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "#e96f3c";
+    context.font = '700 22px "PingFang SC", sans-serif';
+    context.fillText(`READING CLUB  /  ${round.trim()}`, padding, 76);
+    context.fillStyle = "#173d35";
+    context.font = '600 82px "Songti SC", "STSong", serif';
+    context.fillText("本期书单", padding, 170);
+    context.fillStyle = "#60766f";
+    context.font = '26px "PingFang SC", sans-serif';
+    context.fillText(`书单期号 ${round.trim()}  ·  共 ${currentRoundBooks.length} 本`, padding, 224);
+    context.fillStyle = "#173d35";
+    context.fillRect(padding, 258, 92, 4);
+
+    let y = headerHeight;
+    layouts.forEach((layout, index) => {
+      context.fillStyle = "#fffdf7";
+      context.strokeStyle = "#d9d4c9";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.roundRect(padding, y, contentWidth, layout.height, 18);
+      context.fill();
+      context.stroke();
+
+      context.fillStyle = index % 2 === 0 ? "#173d35" : "#e96f3c";
+      context.beginPath();
+      context.arc(padding + 58, y + 60, 30, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = "#fffdf7";
+      context.font = '700 20px Georgia, serif';
+      context.textAlign = "center";
+      context.fillText(String(index + 1).padStart(2, "0"), padding + 58, y + 67);
+      context.textAlign = "left";
+
+      let lineY = y + 52;
+      context.fillStyle = "#173d35";
+      context.font = '600 42px "Songti SC", "STSong", serif';
+      for (const line of layout.titleLines) {
+        context.fillText(line, padding + 116, lineY);
+        lineY += 54;
+      }
+      lineY += 16;
+      context.fillStyle = "#e96f3c";
+      context.font = '700 18px "PingFang SC", sans-serif';
+      context.fillText("推荐信息", padding + 116, lineY);
+      lineY += 42;
+      context.fillStyle = "#405e57";
+      context.font = '28px "PingFang SC", "Microsoft YaHei", sans-serif';
+      for (const line of layout.recommendationLines) {
+        context.fillText(line, padding + 116, lineY);
+        lineY += 42;
+      }
+      context.fillStyle = "#60766f";
+      context.font = '22px "PingFang SC", sans-serif';
+      context.fillText(`推荐人  ${layout.book.recommender || "未填写"}`, padding + 116, y + layout.height - 34);
+      y += layout.height + gap;
+    });
+
+    context.fillStyle = "#173d35";
+    context.font = '600 22px "Songti SC", "STSong", serif';
+    context.fillText("阅读社 · 让好书遇见同路的人", padding, canvas.height - 48);
+    context.fillStyle = "#8a9a95";
+    context.font = '18px "PingFang SC", sans-serif';
+    context.textAlign = "right";
+    context.fillText("书单来自飞书入选记录", width - padding, canvas.height - 48);
+    context.textAlign = "left";
+
+    const anchor = document.createElement("a");
+    anchor.href = canvas.toDataURL("image/png");
+    anchor.download = `${round.trim()}-本期书单.png`;
+    anchor.click();
+  }
+
   return (
     <main>
       <header className="topbar">
@@ -257,6 +425,42 @@ export function CoordinatorApp() {
             {syncingRound ? "正在同步…" : `同步 ${round || "本期"}`}
           </button>
         </div>
+      </section>
+
+      <section className="current-books-panel" aria-label={`${round || "本期"} 本期书单`}>
+        <div className="current-books-heading">
+          <div>
+            <span>CURATED READING LIST</span>
+            <h2>本期书单</h2>
+            <p>书单期号 <b>{round || "—"}</b> · 仅展示“推书汇总”中已勾选入选的书目</p>
+          </div>
+          <button className="booklist-export" type="button" onClick={downloadBookListCard} disabled={!currentRoundBooks.length || roundBooksLoading}>
+            <span>导出图片卡片</span><b>PNG ↘</b>
+          </button>
+        </div>
+        {roundBooksError && <div className="booklist-notice error"><b>书单同步失败</b><span>{roundBooksError}</span></div>}
+        {roundBooksLoading ? (
+          <div className="booklist-notice"><span>正在同步本期入选书目…</span></div>
+        ) : currentRoundBooks.length ? (
+          <div className="current-books-grid">
+            {currentRoundBooks.map((book, index) => (
+              <article key={`${book.title}-${index}`}>
+                <div className="current-book-number">{String(index + 1).padStart(2, "0")}</div>
+                <div className="current-book-copy">
+                  <h3>{book.title}</h3>
+                  <span>推荐信息</span>
+                  <p>{book.recommendation || "暂无推荐信息"}</p>
+                  <small>推荐人 · <b>{book.recommender || "未填写"}</b></small>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : !roundBooksError ? (
+          <div className="booklist-empty">
+            <span>暂无入选书目</span>
+            <p>请在“推书汇总｜{round || "本期"}”中勾选“入选”，再点击上方同步。</p>
+          </div>
+        ) : null}
       </section>
 
       <section className="run-panel" aria-label="运行分组">

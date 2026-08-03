@@ -81,6 +81,33 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 .round-tables-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 18px; color: var(--muted); font-size: 12px; }
 .round-tables-actions .button { min-height: 42px; padding: 0 17px; font-size: 12px; }
 
+.current-books-panel { position: relative; overflow: hidden; margin: 26px 0; padding: 36px 38px 42px; border: 1px solid #cfc8ba; background: #fffdf7; box-shadow: 0 18px 55px rgba(23,61,53,.08); }
+.current-books-panel::before { content: ""; position: absolute; top: -118px; right: -92px; width: 285px; height: 285px; border-radius: 50%; background: var(--accent); opacity: .92; }
+.current-books-panel::after { content: "阅"; position: absolute; top: 12px; right: 34px; color: rgba(255,253,247,.72); font-family: STKaiti, KaiTi, serif; font-size: 78px; line-height: 1; transform: rotate(8deg); }
+.current-books-heading { position: relative; z-index: 1; display: flex; align-items: end; justify-content: space-between; gap: 30px; padding-bottom: 27px; border-bottom: 2px solid var(--ink); }
+.current-books-heading > div > span { color: var(--accent); font-family: Georgia, serif; font-size: 11px; font-weight: 800; letter-spacing: .18em; }
+.current-books-heading h2 { margin: 7px 0 8px; font-family: STSong, Songti SC, serif; font-size: 42px; font-weight: 600; letter-spacing: -.03em; }
+.current-books-heading p { margin: 0; color: var(--muted); font-size: 13px; }
+.current-books-heading p b { color: var(--ink); font-family: Georgia, serif; font-size: 15px; }
+.booklist-export { position: relative; z-index: 2; display: grid; gap: 5px; min-width: 168px; border: 0; padding: 16px 18px; background: var(--ink); color: #fffdf7; text-align: left; cursor: pointer; transition: transform .18s ease, opacity .18s ease; }
+.booklist-export:hover:not(:disabled) { transform: translateY(-3px); }
+.booklist-export:disabled { opacity: .38; cursor: not-allowed; }
+.booklist-export span { font-size: 12px; font-weight: 700; }
+.booklist-export b { color: #f3a181; font-family: Georgia, serif; font-size: 16px; }
+.current-books-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 38px; }
+.current-books-grid article { display: grid; grid-template-columns: 58px 1fr; gap: 18px; min-height: 225px; padding: 29px 0 27px; border-bottom: 1px solid var(--line); }
+.current-book-number { display: grid; place-items: center; align-self: start; width: 50px; height: 50px; border-radius: 50%; background: var(--ink); color: #fffdf7; font-family: Georgia, serif; font-size: 15px; font-style: italic; }
+.current-books-grid article:nth-child(4n+2) .current-book-number, .current-books-grid article:nth-child(4n+3) .current-book-number { background: var(--accent); }
+.current-book-copy h3 { margin: 2px 0 18px; font-family: STSong, Songti SC, serif; font-size: 25px; font-weight: 600; line-height: 1.35; }
+.current-book-copy > span { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .16em; }
+.current-book-copy p { margin: 8px 0 18px; color: #405e57; font-family: STSong, Songti SC, serif; font-size: 15px; line-height: 1.85; white-space: pre-wrap; }
+.current-book-copy small { color: var(--muted); font-size: 11px; }
+.current-book-copy small b { color: var(--ink); font-size: 12px; }
+.booklist-notice, .booklist-empty { margin-top: 24px; padding: 32px; border: 1px dashed #aeb9b4; color: var(--muted); text-align: center; }
+.booklist-notice.error { display: flex; gap: 14px; border-color: #d99b80; background: var(--accent-soft); color: #75351f; text-align: left; }
+.booklist-empty span { color: var(--ink); font-family: STSong, Songti SC, serif; font-size: 21px; }
+.booklist-empty p { margin: 8px 0 0; font-size: 12px; }
+
 .run-panel { background: var(--ink); color: #f9f5ec; border-radius: 5px; padding: 28px 30px 20px; box-shadow: 0 20px 60px rgba(23,61,53,.16); }
 .run-panel label { display: block; margin-bottom: 10px; color: #b9cbc5; font-size: 12px; font-weight: 800; letter-spacing: .13em; }
 .run-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: 10px; }
@@ -186,6 +213,14 @@ footer { display: flex; justify-content: space-between; padding: 25px 0 34px; bo
   .round-table-meta { grid-template-columns: auto 1fr; }
   .round-table-meta > div { grid-column: 1 / -1; padding-top: 5px; }
   .round-tables-actions { align-items: stretch; flex-direction: column; }
+  .current-books-panel { padding: 26px 20px 30px; }
+  .current-books-panel::before { top: -155px; right: -145px; }
+  .current-books-panel::after { display: none; }
+  .current-books-heading { align-items: stretch; flex-direction: column; gap: 20px; }
+  .current-books-heading h2 { font-size: 35px; }
+  .booklist-export { width: 100%; }
+  .current-books-grid { grid-template-columns: 1fr; }
+  .current-books-grid article { min-height: 0; }
   .run-panel { padding: 22px 18px 16px; }
   .run-row { grid-template-columns: 1fr; }
   .run-note { gap: 12px; }

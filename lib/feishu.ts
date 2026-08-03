@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import type { RecordRow } from "./grouping";
+import { textValue, type RecordRow } from "./grouping";
 import { SELECTION_CHOICE_FIELDS, SELECTION_GROUP_FIELDS, SELECTION_STATUS_FIELD } from "./selection-schema";
 
 type AppEnv = {
@@ -27,6 +27,12 @@ export type RoundResources = {
   recommendation: RoundTableResource | null;
 };
 
+export type RoundBook = {
+  title: string;
+  recommendation: string;
+  recommender: string;
+};
+
 const SELECTION_PREFIX = "选书汇总｜";
 const RECOMMENDATION_PREFIX = "推书汇总｜";
 
@@ -37,7 +43,7 @@ const selectionRequiredFields = [
   ...SELECTION_GROUP_FIELDS,
 ];
 
-const recommendationRequiredFields = ["书名", "推书人", "推荐语"];
+const recommendationRequiredFields = ["书名", "推书人", "推荐语", "入选"];
 const selectionWriteFields = [SELECTION_STATUS_FIELD, ...SELECTION_GROUP_FIELDS];
 
 let tokenCache: { token: string; expiresAt: number } | null = null;
@@ -198,6 +204,35 @@ export async function loadFeishuData(round: string) {
   ]);
   const selections = rawSelections.map((row) => ({ ...row, "期次": round }));
   return { members, selections, selectionTableId: selectionTable.id };
+}
+
+function checkboxValue(value: unknown) {
+  if (typeof value === "boolean") return value;
+  return ["1", "true", "是", "yes", "y"].includes(textValue(value).toLocaleLowerCase("zh-CN"));
+}
+
+export async function loadRoundBooks(round: string) {
+  if (!validRound(round)) throw new Error("期次格式应为 YYYY-MM，例如 2026-08");
+  const tables = await listTables();
+  const recommendationTable = requireRoundTable(tables, "recommendation", round);
+  await validateFields(recommendationTable, recommendationRequiredFields);
+  const rows = await listRecords(recommendationTable.id);
+  const books = rows
+    .map((row, index) => {
+      const order = Number(textValue(row["顺序"]));
+      return {
+        title: textValue(row["书名"]),
+        recommendation: textValue(row["推荐语"]),
+        recommender: textValue(row["推书人"]),
+        selected: checkboxValue(row["入选"]),
+        order: Number.isFinite(order) && order > 0 ? order : Number.POSITIVE_INFINITY,
+        index,
+      };
+    })
+    .filter((book) => book.selected && book.title)
+    .sort((left, right) => left.order - right.order || left.index - right.index)
+    .map(({ title, recommendation, recommender }) => ({ title, recommendation, recommender }));
+  return { round, tableId: recommendationTable.id, books };
 }
 
 export async function updateSelectionRecords(tableId: string, records: { recordId: string; fields: Record<string, unknown> }[]) {
