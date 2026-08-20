@@ -67,17 +67,6 @@ function wrappedCanvasLines(context: CanvasRenderingContext2D, text: string, max
   return lines;
 }
 
-function defaultRound() {
-  const parts = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-  }).formatToParts(new Date());
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value ?? "1";
-  return `${year}-${month.padStart(2, "0")}`;
-}
-
 function Initials({ name }: { name: string }) {
   return <span className="avatar" aria-hidden="true">{name.trim().slice(0, 1) || "?"}</span>;
 }
@@ -106,7 +95,7 @@ function RoundTableCard({ title, copy, resource }: { title: string; copy: string
 }
 
 export function CoordinatorApp() {
-  const [round, setRound] = useState(defaultRound);
+  const [round, setRound] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
   const [backendReady, setBackendReady] = useState<boolean | null>(null);

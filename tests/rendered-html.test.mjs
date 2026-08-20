@@ -38,6 +38,8 @@ test("coordinator page contains the complete primary workflow", async () => {
   assert.match(client, /导出图片卡片/);
   assert.match(client, /toDataURL\("image\/png"\)/);
   assert.match(client, /同步.*本期/);
+  assert.match(client, /const \[round, setRound\] = useState\(""\)/);
+  assert.doesNotMatch(client, /function defaultRound/);
   assert.doesNotMatch(client, /codex-preview|Building your site|react-loading-skeleton/);
 });
 
