@@ -18,6 +18,30 @@ export async function historyRows(excludeRound: string) {
   return result.results.map((row: { round: string; group_id: string; member_key: string; created_at: string }) => ({ round: row.round, groupId: row.group_id, memberKey: row.member_key, createdAt: row.created_at }));
 }
 
+export type StoredGroup = { book: string; group: string; status: string; members: { key: string; name: string }[] };
+
+export async function currentRoundGroups(round: string): Promise<StoredGroup[] | null> {
+  const db = database();
+  const saved = await db.prepare("SELECT id FROM rounds WHERE id = ?").bind(round).first<{ id: string }>();
+  if (!saved) return null;
+  const rows = await db.prepare(`
+    SELECT g.id AS group_id, g.book, g.group_no, g.status, gm.member_key, gm.member_name
+    FROM groups g
+    LEFT JOIN group_members gm ON gm.group_id = g.id
+    WHERE g.round = ?
+    ORDER BY g.book ASC,
+      CASE WHEN g.group_no = '0' THEN 999998 WHEN g.group_no = '待协调' THEN 999999 ELSE CAST(g.group_no AS INTEGER) END ASC,
+      g.id ASC, gm.member_name ASC
+  `).bind(round).all<{ group_id: string; book: string; group_no: string; status: string; member_key: string | null; member_name: string | null }>();
+  const groups = new Map<string, StoredGroup>();
+  for (const row of rows.results) {
+    const group = groups.get(row.group_id) ?? { book: row.book, group: row.group_no, status: row.status, members: [] };
+    if (row.member_key && row.member_name) group.members.push({ key: row.member_key, name: row.member_name });
+    groups.set(row.group_id, group);
+  }
+  return [...groups.values()];
+}
+
 function groupId(round: string, book: string, groupNo: string) {
   const source = `${round}\u0000${book.normalize("NFKC").toLocaleLowerCase("zh-CN")}\u0000${groupNo}`;
   let hash = 2166136261;
@@ -49,10 +73,10 @@ export async function saveRound(input: {
       VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(input.round, item.key, item.name, item.row.recordId ?? null, JSON.stringify(item.choices), item.submittedAt));
   }
-  for (const group of input.groups) {
-    const id = groupId(input.round, group.book, group.group);
+  for (const [groupIndex, group] of input.groups.entries()) {
+    const id = groupId(input.round, group.book, `${group.group}:${groupIndex}:${group.memberKeys.join("\u0000")}`);
     statements.push(db.prepare("INSERT INTO groups (id, round, book, group_no, status, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(id, input.round, group.book, group.group, group.group === "待协调" ? "待协调" : "正常", now));
+      .bind(id, input.round, group.book, group.group, group.group === "0" ? "读书笔记组" : group.group === "待协调" ? "待协调" : "正常", now));
     group.members.forEach((name, index) => {
       statements.push(db.prepare("INSERT INTO group_members (group_id, member_key, member_name) VALUES (?, ?, ?)")
         .bind(id, group.memberKeys[index], name));

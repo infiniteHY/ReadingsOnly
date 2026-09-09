@@ -110,7 +110,7 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 
 .run-panel { background: var(--ink); color: #f9f5ec; border-radius: 5px; padding: 28px 30px 20px; box-shadow: 0 20px 60px rgba(23,61,53,.16); }
 .run-panel label { display: block; margin-bottom: 10px; color: #b9cbc5; font-size: 12px; font-weight: 800; letter-spacing: .13em; }
-.run-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; gap: 10px; }
+.run-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; gap: 10px; }
 .run-row input { min-width: 0; height: 54px; border: 1px solid rgba(255,255,255,.24); border-radius: 3px; padding: 0 17px; background: rgba(255,255,255,.07); color: white; outline: none; font-size: 17px; }
 .run-row input:focus { border-color: #f4a07b; box-shadow: 0 0 0 3px rgba(244,160,123,.15); }
 .button { min-height: 54px; border: 0; border-radius: 3px; padding: 0 23px; cursor: pointer; font-weight: 800; transition: transform .18s ease, opacity .18s ease, background .18s ease; }
@@ -118,6 +118,7 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 .button:disabled { opacity: .42; cursor: not-allowed; }
 .button.primary { background: var(--accent); color: white; }
 .button.secondary { background: #f5f0e6; color: var(--ink); }
+.button.local-save { background: transparent; border: 1px solid rgba(255,255,255,.4); color: #f5f0e6; }
 .run-note { display: flex; justify-content: space-between; padding-top: 16px; color: #a9beb6; font-size: 12px; }
 .run-note a { color: #f0a083; }
 
@@ -135,6 +136,9 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 .section-kicker { color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: .14em; }
 .result-heading h2 { margin: 6px 0 0; font-family: STSong, Songti SC, serif; font-size: 36px; font-weight: 600; }
 .download { border: 0; border-bottom: 1px solid var(--ink); padding: 0 0 4px; background: transparent; color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 700; }
+.download:disabled { border-color: rgba(23,61,53,.28); color: #8d9a95; cursor: not-allowed; }
+.result-notice { display: flex; gap: 14px; margin-bottom: 24px; padding: 16px 20px; border: 1px dashed #d99b80; background: var(--accent-soft); color: #75351f; font-size: 13px; }
+.result-notice.stored-notice { border-color: #9db8ae; background: #f1f6f4; color: #2f5147; }
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); background: var(--card); }
 .stats-grid article { min-height: 144px; padding: 22px; border-right: 1px solid var(--line); }
 .stats-grid article:last-child { border-right: 0; }
@@ -166,8 +170,18 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 .book-groups { display: grid; gap: 8px; }
 .group-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; min-height: 58px; padding: 8px 15px; background: rgba(255,253,247,.82); border-left: 3px solid #8bb0a4; }
 .group-row.pending { border-color: var(--accent); background: var(--accent-soft); }
+.group-row.note-group { border-color: #b17b35; background: #fff5df; }
 .group-label { color: var(--muted); font-size: 12px; font-weight: 800; }
 .group-row > div { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+.group-row:has(.finalize-group) { grid-template-columns: 90px 1fr auto; }
+.finalize-group { border: 1px solid var(--ink); padding: 7px 10px; background: transparent; color: var(--ink); cursor: pointer; font-size: 12px; }
+.finalize-group:hover { background: var(--ink); color: #fff; }
+.pending-notice { border-color: #b17b35; background: #fff5df; }
+.draggable-member { padding: 4px 7px 4px 3px; border-radius: 18px; cursor: grab; user-select: none; }
+.draggable-member:hover { background: var(--green-soft); }
+.draggable-member:active { cursor: grabbing; opacity: .6; }
+.note-dropzone { padding: 13px 15px; border: 1px dashed #b17b35; color: #7a5528; background: rgba(255,245,223,.45); text-align: center; font-size: 12px; }
+.note-dropzone:hover { background: #fff5df; }
 .no-groups { padding: 48px; border: 1px dashed #aaa99f; text-align: center; color: var(--muted); }
 .history-section { padding: 0 0 80px; }
 .history-list { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--ink); }

@@ -1,4 +1,5 @@
 import { SELECTION_CHOICE_FIELDS, SELECTION_GROUP_FIELDS, SELECTION_STATUS_FIELD } from "./selection-schema";
+import type { StoredGroup } from "./database";
 
 export type RecordRow = Record<string, unknown> & { recordId?: string };
 export type History = { counts: Map<string, number>; lastPairs: Set<string>; lastRound: string };
@@ -232,6 +233,102 @@ export function makeGrouping(effective: Evaluation[], history: History, seed: st
       }
       exportRows.push({ book: entry.book, group: groupNo, members: group.map((item) => item.name), memberKeys: group.map((item) => item.key) });
     });
+  }
+  return { assignments, exportRows };
+}
+
+export type GroupEdit = { book: string; group?: string; memberKeys: string[] };
+
+export function reconcileSavedGrouping(
+  generated: ReturnType<typeof makeGrouping>,
+  saved: StoredGroup[] | null,
+) {
+  if (saved === null) return generated;
+  const currentByBook = new Map<string, { book: string; keys: Set<string>; names: Map<string, string> }>();
+  for (const row of generated.exportRows) {
+    const bookKey = normalized(row.book);
+    const entry = currentByBook.get(bookKey) ?? { book: row.book, keys: new Set<string>(), names: new Map<string, string>() };
+    row.memberKeys.forEach((key, index) => { entry.keys.add(key); entry.names.set(key, row.members[index]); });
+    currentByBook.set(bookKey, entry);
+  }
+  const savedByBook = new Map<string, StoredGroup[]>();
+  for (const group of saved) savedByBook.set(normalized(group.book), [...(savedByBook.get(normalized(group.book)) ?? []), group]);
+  const exportRows: typeof generated.exportRows = [];
+  for (const [bookKey, current] of currentByBook) {
+    const oldGroups = savedByBook.get(bookKey) ?? [];
+    const oldKeys = new Set(oldGroups.flatMap((group) => group.members.map((member) => member.key)));
+    for (const oldGroup of oldGroups) {
+      const exited = oldGroup.members.some((member) => !current.keys.has(member.key));
+      const survivors = oldGroup.members.filter((member) => current.keys.has(member.key));
+      if (!survivors.length) continue;
+      exportRows.push({
+        book: current.book,
+        group: exited ? "待协调" : oldGroup.group,
+        members: survivors.map((member) => current.names.get(member.key) ?? member.name),
+        memberKeys: survivors.map((member) => member.key),
+      });
+    }
+    const newMembers = [...current.keys].filter((key) => !oldKeys.has(key));
+    if (newMembers.length) exportRows.push({
+      book: current.book,
+      group: "待协调",
+      members: newMembers.map((key) => current.names.get(key) ?? key),
+      memberKeys: newMembers,
+    });
+  }
+  return { assignments: new Map<string, Record<string, string>>(), exportRows };
+}
+
+export function applyGroupingEdits(
+  effective: Evaluation[],
+  generated: ReturnType<typeof makeGrouping>,
+  edits: GroupEdit[],
+) {
+  const expectedByBook = new Map<string, string[]>();
+  for (const row of generated.exportRows) {
+    expectedByBook.set(normalized(row.book), [...(expectedByBook.get(normalized(row.book)) ?? []), ...row.memberKeys]);
+  }
+  const editsByBook = new Map<string, GroupEdit[]>();
+  for (const edit of edits) {
+    if (!edit.book || !Array.isArray(edit.memberKeys) || edit.memberKeys.length === 0) throw new Error("调整后的分组包含空组或无效数据");
+    const bookKey = normalized(edit.book);
+    editsByBook.set(bookKey, [...(editsByBook.get(bookKey) ?? []), edit]);
+  }
+  if (editsByBook.size !== expectedByBook.size) throw new Error("调整后的书目与预览结果不一致，请重新预览");
+
+  const participantByBookAndKey = new Map<string, Participant>();
+  for (const item of effective) for (const slot of item.choiceSlots) {
+    participantByBookAndKey.set(`${normalized(slot.book)}\u0000${item.key}`, {
+      key: item.key, name: item.name, recordId: item.row.recordId ?? "", choiceIndex: slot.choiceIndex,
+    });
+  }
+  const assignments = new Map<string, Record<string, string>>();
+  const exportRows: { book: string; group: string; members: string[]; memberKeys: string[] }[] = [];
+  for (const [bookKey, expectedKeys] of expectedByBook) {
+    const bookEdits = editsByBook.get(bookKey);
+    const receivedKeys = bookEdits?.flatMap((edit) => edit.memberKeys) ?? [];
+    if ([...expectedKeys].sort().join("\u0000") !== [...receivedKeys].sort().join("\u0000")) {
+      throw new Error("调整后的成员与预览结果不一致，请重新预览");
+    }
+    const usedGroupNumbers = new Set((bookEdits ?? []).map((edit) => edit.group).filter((value) => /^\d+$/.test(value ?? "") && value !== "0"));
+    let normalGroupNo = 0;
+    for (const edit of bookEdits ?? []) {
+      while (usedGroupNumbers.has(String(normalGroupNo + 1))) normalGroupNo += 1;
+      const groupNo = edit.group === "待协调"
+        ? "待协调"
+        : edit.memberKeys.length === 1
+        ? (edit.group === "0" ? "0" : "待协调")
+        : (/^\d+$/.test(edit.group ?? "") && edit.group !== "0" ? edit.group as string : String(++normalGroupNo));
+      const participants = edit.memberKeys.map((key) => participantByBookAndKey.get(`${bookKey}\u0000${key}`));
+      if (participants.some((item) => !item)) throw new Error("调整后的成员选书信息无效，请重新预览");
+      const validParticipants = participants as Participant[];
+      for (const participant of validParticipants) {
+        const fields = assignments.get(participant.recordId) ?? {};
+        fields[SELECTION_GROUP_FIELDS[participant.choiceIndex]] = groupNo;
+        assignments.set(participant.recordId, fields);
+      }
+      exportRows.push({ book: edit.book, group: groupNo, members: validParticipants.map((item) => item.name), memberKeys: edit.memberKeys });
+    }
   }
   return { assignments, exportRows };
 }

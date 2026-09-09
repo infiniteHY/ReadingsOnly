@@ -31,7 +31,7 @@ test("coordinator page contains the complete primary workflow", async () => {
   assert.match(client, /预览结果/);
   assert.match(client, /确认并写回飞书/);
   assert.match(client, /数据库历史/);
-  assert.match(client, /下载 CSV/);
+  assert.match(client, /下载分组图片/);
   assert.match(client, /按期次归档/);
   assert.match(client, /推书汇总/);
   assert.match(client, /本期书单/);
@@ -145,6 +145,67 @@ test("greedy grouping avoids previously paired members when unseen partners exis
     const pair = [...group.memberKeys].sort().join("\u0000");
     assert.equal(oldPairs.has(pair), false);
   }
+});
+
+test("edited preview groups write single-person reading notes as group zero", async () => {
+  const { applyGroupingEdits, makeGrouping } = await loadGroupingModule();
+  const effective = ["a", "b", "c"].map((key, index) => ({
+    key,
+    name: key.toUpperCase(),
+    row: { recordId: `record-${key}` },
+    choiceSlots: [{ book: "测试书", choiceIndex: index === 2 ? 2 : 0 }],
+  }));
+  const generated = makeGrouping(effective, { counts: new Map(), lastPairs: new Set(), lastRound: "" }, "round");
+  const edited = applyGroupingEdits(effective, generated, [
+    { book: "测试书", group: "1", memberKeys: ["a", "b"] },
+    { book: "测试书", group: "0", memberKeys: ["c"] },
+  ]);
+  assert.equal(edited.exportRows[1].group, "0");
+  assert.equal(edited.assignments.get("record-c")["选书3组号"], "0");
+  assert.throws(() => applyGroupingEdits(effective, generated, [
+    { book: "测试书", group: "1", memberKeys: ["a", "b", "b"] },
+  ]), /成员与预览结果不一致/);
+});
+
+test("resync preserves unaffected groups and moves departed members' tablemates to pending", async () => {
+  const { makeGrouping, reconcileSavedGrouping } = await loadGroupingModule();
+  const effective = ["a", "c", "d", "e"].map((key) => ({
+    key, name: key.toUpperCase(), row: { recordId: `record-${key}` },
+    choiceSlots: [{ book: "测试书", choiceIndex: 0 }],
+  }));
+  const generated = makeGrouping(effective, { counts: new Map(), lastPairs: new Set(), lastRound: "" }, "round");
+  const reconciled = reconcileSavedGrouping(generated, [
+    { book: "测试书", group: "1", status: "正常", members: [{ key: "a", name: "A" }, { key: "b", name: "B" }] },
+    { book: "测试书", group: "7", status: "正常", members: [{ key: "c", name: "C" }, { key: "d", name: "D" }] },
+  ]);
+  assert.equal(JSON.stringify(reconciled.exportRows.map((group) => ({ group: group.group, keys: [...group.memberKeys] }))), JSON.stringify([
+    { group: "待协调", keys: ["a"] },
+    { group: "7", keys: ["c", "d"] },
+    { group: "待协调", keys: ["e"] },
+  ]));
+});
+
+test("pending resync groups cannot be silently converted during apply", async () => {
+  const { applyGroupingEdits, makeGrouping } = await loadGroupingModule();
+  const effective = ["a", "b"].map((key) => ({
+    key, name: key.toUpperCase(), row: { recordId: `record-${key}` },
+    choiceSlots: [{ book: "测试书", choiceIndex: 0 }],
+  }));
+  const generated = makeGrouping(effective, { counts: new Map(), lastPairs: new Set(), lastRound: "" }, "round");
+  const edited = applyGroupingEdits(effective, generated, [
+    { book: "测试书", group: "待协调", memberKeys: ["a", "b"] },
+  ]);
+  assert.equal(edited.exportRows[0].group, "待协调");
+});
+
+test("preview groups expose drag editing and submit the edited member keys", async () => {
+  const client = await readFile(new URL("../app/CoordinatorApp.tsx", import.meta.url), "utf8");
+  assert.match(client, /draggable=\{!result\.applied\}/);
+  assert.match(client, /拖到这里，设为单人读书笔记组/);
+  assert.match(client, /memberKeys: group\.memberKeys/);
+  assert.match(client, /group\.group === "0" \? "读书笔记组"/);
+  assert.match(client, /将这些成员组成新组/);
+  assert.match(client, /result\.stats\.pending > 0/);
 });
 
 test("single-admin login protects the workbench and server APIs", async () => {

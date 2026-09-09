@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "reading-club-coordinator",
   "account_id": "b3945351f46c981a8a0c565b44a32736",
-  "compatibility_date": "2026-08-02",
+  "compatibility_date": "2026-05-22",
   "vars": {
     "LARK_BASE_TOKEN": "DXHmbEF1OaquxtsGcEPcXGuSntb",
     "LARK_MEMBER_TABLE_ID": "tbldukNupNFJacJg"
