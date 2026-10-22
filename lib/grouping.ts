@@ -1,8 +1,9 @@
 import { SELECTION_CHOICE_FIELDS, SELECTION_GROUP_FIELDS, SELECTION_STATUS_FIELD } from "./selection-schema";
+import { allocateTripleSeats } from "./triple-allocation.mjs";
 import type { StoredGroup } from "./database";
 
 export type RecordRow = Record<string, unknown> & { recordId?: string };
-export type History = { counts: Map<string, number>; lastPairs: Set<string>; lastRound: string };
+export type History = { counts: Map<string, number>; lastPairs: Set<string>; lastRound: string; tripleCounts?: Map<string, number> };
 
 export function textValue(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -102,23 +103,26 @@ export function historyFromRows(rows: { round: string; groupId: string; memberKe
   const byGroup = new Map<string, { round: string; names: Set<string> }>();
   const roundLatest = new Map<string, number>();
   for (const row of rows) {
-    const entry = byGroup.get(row.groupId) ?? { round: row.round, names: new Set<string>() };
-    entry.names.add(row.memberKey);
-    byGroup.set(row.groupId, entry);
+    const groupKey = JSON.stringify([row.round, row.groupId]);
+    const entry = byGroup.get(groupKey) ?? { round: row.round, names: new Set<string>() };
+    entry.names.add(normalized(row.memberKey));
+    byGroup.set(groupKey, entry);
     roundLatest.set(row.round, Math.max(roundLatest.get(row.round) ?? 0, Date.parse(row.createdAt) || 0));
   }
-  const lastRound = [...roundLatest.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).at(-1)?.[0] ?? "";
+  const lastRound = [...roundLatest.keys()].sort().at(-1) ?? "";
   const counts = new Map<string, number>();
   const lastPairs = new Set<string>();
+  const tripleCounts = new Map<string, number>();
   for (const entry of byGroup.values()) {
     const names = [...entry.names];
+    if (names.length === 3) for (const name of names) tripleCounts.set(name, (tripleCounts.get(name) ?? 0) + 1);
     for (let i = 0; i < names.length; i += 1) for (let j = i + 1; j < names.length; j += 1) {
       const key = pairKey(names[i], names[j]);
       counts.set(key, (counts.get(key) ?? 0) + 1);
       if (entry.round === lastRound) lastPairs.add(key);
     }
   }
-  return { counts, lastPairs, lastRound };
+  return { counts, lastPairs, lastRound, tripleCounts };
 }
 
 function targetSizes(total: number): number[] {
@@ -221,10 +225,15 @@ export function makeGrouping(effective: Evaluation[], history: History, seed: st
     entry.participants.push({ key: selection.key, name: selection.name, recordId: selection.row.recordId ?? "", choiceIndex });
     books.set(key, entry);
   }
+  const tripleSeats = allocateTripleSeats(books, history.tripleCounts, seed);
   const assignments = new Map<string, Record<string, string>>();
   const exportRows: { book: string; group: string; members: string[]; memberKeys: string[] }[] = [];
   for (const [bookKey, entry] of [...books].sort((a, b) => a[1].book.localeCompare(b[1].book, "zh-CN"))) {
-    arrange(entry.participants, history, `${seed}:${bookKey}`).forEach((group, index) => {
+    const reserved = tripleSeats.get(bookKey) ?? new Set<string>();
+    const pairs = arrange(entry.participants.filter((p) => !reserved.has(p.key)), history, `${seed}:${bookKey}`);
+    const triple = entry.participants.filter((p) => reserved.has(p.key)).sort((a, b) => participantOrder(a, b, `${seed}:${bookKey}`));
+    const groups = [...pairs.filter((group) => group.length), ...(triple.length ? [triple] : [])];
+    groups.forEach((group, index) => {
       const groupNo = group.length === 1 ? "待协调" : String(index + 1);
       for (const participant of group) {
         const fields = assignments.get(participant.recordId) ?? {};

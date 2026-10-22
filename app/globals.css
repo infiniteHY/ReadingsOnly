@@ -110,7 +110,8 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 
 .run-panel { background: var(--ink); color: #f9f5ec; border-radius: 5px; padding: 28px 30px 20px; box-shadow: 0 20px 60px rgba(23,61,53,.16); }
 .run-panel label { display: block; margin-bottom: 10px; color: #b9cbc5; font-size: 12px; font-weight: 800; letter-spacing: .13em; }
-.run-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; gap: 10px; }
+.run-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.run-row input { flex: 1 1 180px; }
 .run-row input { min-width: 0; height: 54px; border: 1px solid rgba(255,255,255,.24); border-radius: 3px; padding: 0 17px; background: rgba(255,255,255,.07); color: white; outline: none; font-size: 17px; }
 .run-row input:focus { border-color: #f4a07b; box-shadow: 0 0 0 3px rgba(244,160,123,.15); }
 .button { min-height: 54px; border: 0; border-radius: 3px; padding: 0 23px; cursor: pointer; font-weight: 800; transition: transform .18s ease, opacity .18s ease, background .18s ease; }
@@ -132,7 +133,8 @@ main { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
 .empty-line { width: 1px; height: 54px; background: var(--line); }
 
 .results { padding: 74px 0 100px; }
-.result-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 24px; }
+.result-heading { display: flex; flex-wrap: wrap; gap: 18px; align-items: end; justify-content: space-between; margin-bottom: 24px; }
+.result-heading > div { flex: 1 1 240px; }
 .section-kicker { color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: .14em; }
 .result-heading h2 { margin: 6px 0 0; font-family: STSong, Songti SC, serif; font-size: 36px; font-weight: 600; }
 .download { border: 0; border-bottom: 1px solid var(--ink); padding: 0 0 4px; background: transparent; color: var(--ink); cursor: pointer; font-size: 14px; font-weight: 700; }
@@ -236,7 +238,7 @@ footer { display: flex; justify-content: space-between; padding: 25px 0 34px; bo
   .current-books-grid { grid-template-columns: 1fr; }
   .current-books-grid article { min-height: 0; }
   .run-panel { padding: 22px 18px 16px; }
-  .run-row { grid-template-columns: 1fr; }
+  .run-row { display: grid; grid-template-columns: 1fr; }
   .run-note { gap: 12px; }
   .empty-state { grid-template-columns: auto 1fr; margin: 50px 0 80px; }
   .empty-line { display: none; }

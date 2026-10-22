@@ -3,6 +3,7 @@ import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import * as tripleAllocation from "../lib/triple-allocation.mjs";
 
 async function loadGroupingModule() {
   const source = await readFile(new URL("../lib/grouping.ts", import.meta.url), "utf8");
@@ -14,6 +15,7 @@ async function loadGroupingModule() {
     module: moduleRecord,
     exports: moduleRecord.exports,
     require(id) {
+      if (id === "./triple-allocation.mjs") return tripleAllocation;
       if (id === "./selection-schema") return {
         SELECTION_CHOICE_FIELDS: ["选书1", "选书2", "选书3"],
         SELECTION_GROUP_FIELDS: ["选书1组号", "选书2组号", "选书3组号"],

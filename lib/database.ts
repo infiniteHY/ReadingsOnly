@@ -12,7 +12,7 @@ export async function historyRows(excludeRound: string) {
     SELECT g.round, g.id AS group_id, gm.member_key, g.created_at
     FROM groups g
     JOIN group_members gm ON gm.group_id = g.id
-    WHERE g.round <> ?
+    WHERE g.round < ? AND g.status = '正常' AND g.group_no NOT IN ('0', '待协调')
     ORDER BY g.created_at ASC, g.id ASC
   `).bind(excludeRound).all<{ round: string; group_id: string; member_key: string; created_at: string }>();
   return result.results.map((row: { round: string; group_id: string; member_key: string; created_at: string }) => ({ round: row.round, groupId: row.group_id, memberKey: row.member_key, createdAt: row.created_at }));

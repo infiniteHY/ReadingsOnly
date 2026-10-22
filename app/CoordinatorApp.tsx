@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { tripleWarnings } from "../lib/triple-allocation.mjs";
+import { downloadGroupsCsv } from "../lib/group-export";
 
 const API_URL = "";
 const BASE_URL = "https://hcnqf97op6m3.feishu.cn/base/DXHmbEF1OaquxtsGcEPcXGuSntb";
@@ -18,6 +20,7 @@ type Result = {
   invalid: { name: string; reason: string }[];
   groups: Group[];
   history?: HistoryItem[];
+  historyWarning?: string;
 };
 type HistoryGroup = { book: string; group: string; status: string; members: { key: string; name: string }[] };
 type HistoryItem = {
@@ -113,6 +116,7 @@ export function CoordinatorApp() {
   const [roundBooksLoading, setRoundBooksLoading] = useState(false);
   const [roundBooksError, setRoundBooksError] = useState("");
   const [groupsImageError, setGroupsImageError] = useState("");
+  const [csvError, setCsvError] = useState("");
   const [draggedMember, setDraggedMember] = useState<DraggedMember | null>(null);
   const currentRoundResources = roundResources?.round === round.trim() ? roundResources : null;
   const currentRoundBooks = roundBookList?.round === round.trim() ? roundBookList.books : [];
@@ -212,10 +216,20 @@ export function CoordinatorApp() {
     }
   }
 
-  async function run(apply: boolean, writeFeishu = true) {
+  function downloadCsv(data: Result) {
+    setCsvError("");
+    try {
+      downloadGroupsCsv(data.round, data.groups);
+    } catch {
+      setCsvError("本地 CSV 下载失败，请点击“下载 CSV”重试；已保存的飞书和平台数据不受影响。");
+    }
+  }
+
+  async function run(apply: boolean, writeFeishu = true, regenerate = false) {
     if (!round.trim()) return setError("请先填写期次");
     setLoading(true);
     setError("");
+    setCsvError("");
     setConfirmMode(null);
     try {
       const response = await fetch(`${API_URL}/api/grouping`, {
@@ -225,6 +239,7 @@ export function CoordinatorApp() {
           round: round.trim(),
           apply,
           writeFeishu,
+          regenerate,
           groups: apply ? result?.groups.map((group) => ({ book: group.book, group: group.group, memberKeys: group.memberKeys })) : undefined,
         }),
       });
@@ -696,6 +711,7 @@ export function CoordinatorApp() {
           <button className="button local-save" onClick={() => setConfirmMode("local")} disabled={loading || !result || !groupedBooks.length || currentRoundResources?.selection === null}>
             仅存本地库
           </button>
+          <button className="button local-save" onClick={() => run(false, true, true)} disabled={loading || !result}>按新规则重新分组</button>
         </div>
         <div className="run-note">
           <span>分组只读取“选书汇总｜{round || "本期"}”</span>
@@ -719,9 +735,14 @@ export function CoordinatorApp() {
         <section className="results" aria-live="polite">
           <div className="result-heading">
             <div><span className="section-kicker">{result.round}</span><h2>{result.applied ? "已写回的分组结果" : result.stored ? "已存入本地数据库" : "分组预览"}</h2></div>
+            <button className="download" onClick={() => downloadCsv(result)} disabled={!groupedBooks.length}>下载 CSV ↓</button>
             <button className="download" onClick={downloadGroupsImage} disabled={!groupedBooks.length}>下载分组图片 ↓</button>
           </div>
           {groupsImageError && <div className="result-notice"><b>图片导出失败</b><span>{groupsImageError}</span></div>}
+          {csvError && <div className="result-notice"><b>CSV 下载失败</b><span>{csvError}</span></div>}
+          {result.historyWarning && <div className="result-notice"><b>历史刷新提示</b><span>{result.historyWarning}</span></div>}
+          {result.applied && <div className="result-notice stored-notice"><b>已同步保存</b><span>分组已写回飞书并同步保存到平台数据库。</span></div>}
+          {tripleWarnings(result.groups).map((warning) => <div className="result-notice pending-notice" key={warning}><b>三人组重复提醒</b><span>{warning}</span></div>)}
           {!result.applied && result.stats.pending > 0 && (
             <div className="result-notice pending-notice"><b>需要手动分组</b><span>退出者原来的同桌及新增选书成员已放入待分组区域。安排完成后才能写回飞书。</span></div>
           )}
